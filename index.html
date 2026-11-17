@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Piano Simulator — 88 Keys</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <header id="topbar">
+    <div class="brand">
+      <span class="logo">🎹</span>
+      <div>
+        <h1>Piano Simulator</h1>
+        <p id="songLabel">Load a piece to begin</p>
+      </div>
+    </div>
+    <div class="song-controls">
+      <select id="songSelect" aria-label="Song"></select>
+      <button id="loadBtn" class="btn">Load MIDI</button>
+      <input id="fileInput" type="file" accept=".mid,.midi" hidden />
+    </div>
+  </header>
+
+  <aside id="side">
+    <section>
+      <h2>View</h2>
+      <div class="preset-grid">
+        <button data-view="top" class="btn small active">Top</button>
+        <button data-view="perform" class="btn small">Stage</button>
+        <button data-view="front" class="btn small">Front</button>
+        <button data-view="side" class="btn small">Side</button>
+        <button data-view="close" class="btn small">Close</button>
+      </div>
+      <div class="row">
+        <button id="panL" class="btn small" title="Move left">◀</button>
+        <button id="zoomOut" class="btn small" title="Zoom out">−</button>
+        <button id="zoomIn" class="btn small" title="Zoom in">+</button>
+        <button id="panR" class="btn small" title="Move right">▶</button>
+      </div>
+      <p class="hint">Drag to orbit · scroll to zoom · right-drag to pan</p>
+    </section>
+    <section>
+      <h2>Show</h2>
+      <label class="toggle"><input id="handsToggle" type="checkbox" checked /><span>Hands</span></label>
+      <label class="toggle"><input id="barsToggle" type="checkbox" checked /><span>Falling bars</span></label>
+      <label class="toggle"><input id="loopToggle" type="checkbox" /><span>Loop</span></label>
+    </section>
+    <section>
+      <h2>Sound</h2>
+      <input id="volume" type="range" min="0" max="1" step="0.01" value="0.9" />
+    </section>
+    <section>
+      <button id="recordBtn" class="btn record">● Record video</button>
+      <p class="hint" id="recHint">Saves a WebM with audio.</p>
+    </section>
+  </aside>
+
+  <footer id="transport">
+    <button id="playBtn" class="btn play" aria-label="Play">▶</button>
+    <span id="timeLabel" class="time">0:00 / 0:00</span>
+    <input id="seek" type="range" min="0" max="1000" step="1" value="0" />
+    <div class="speed">
+      <label for="speed">Speed</label>
+      <input id="speed" type="range" min="0.25" max="2" step="0.05" value="1" />
+      <span id="speedLabel">1.00×</span>
+    </div>
+  </footer>
+
+  <div id="loader"><div class="spin"></div><p id="loaderText">Loading samples…</p></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

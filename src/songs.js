@@ -1,0 +1,17 @@
+export const SONGS = [
+  { file: 'elise.mid', title: 'Für Elise', composer: 'Beethoven' },
+  { file: 'mond_1.mid', title: 'Moonlight Sonata, 1st mvmt', composer: 'Beethoven' },
+  { file: 'pathetique_2.mid', title: 'Pathétique, 2nd mvmt', composer: 'Beethoven' },
+  { file: 'mz_331_3.mid', title: 'Turkish March (K.331)', composer: 'Mozart' },
+  { file: 'chpn_op27_2.mid', title: 'Nocturne Op.27 No.2', composer: 'Chopin' },
+  { file: 'chpn-p15.mid', title: 'Raindrop Prelude Op.28 No.15', composer: 'Chopin' },
+  { file: 'liz_liebestraum.mid', title: 'Liebestraum No.3', composer: 'Liszt' },
+  { file: 'deb_clai.mid', title: 'Clair de Lune', composer: 'Debussy' },
+  { file: 'grieg_op12_1_arietta.mid', title: 'Arietta Op.12 No.1', composer: 'Grieg' },
+  { file: 'bach_846.mid', title: 'Prelude in C (WTC I)', composer: 'Bach' },
+  { file: 'pachelbel_canon.mid', title: 'Canon in D', composer: 'Pachelbel' },
+  { file: 'entertainer.mid', title: 'The Entertainer', composer: 'Joplin' },
+  { file: 'comptine.mid', title: "Comptine d'un autre été", composer: 'Yann Tiersen' },
+  { file: 'river_flows_in_you.mid', title: 'River Flows in You', composer: 'Yiruma' },
+  { file: 'kiss_the_rain.mid', title: 'Kiss the Rain', composer: 'Yiruma' },
+];
