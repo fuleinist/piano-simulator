@@ -95,6 +95,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/piano.js` | The keyboard, the keys, and the press animation. |
 | `src/bars.js` | The depth-travelling note bars. |
 | `src/hands.js` | The hand models and the motion controller. |
+| `src/handrig.js` | Rig math: bind-pose calibration, finger pose, and key contact. No Three.js import. |
 | `src/player.js` | MIDI parsing, the Tone.js sampler, and the transport. |
 | `src/recorder.js` | Canvas and audio capture to WebM. |
 | `src/songs.js` | The built-in piece catalog. |
@@ -106,12 +107,19 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-The smoke test checks the key layout and runs the fingering engine on all 15 MIDIs. It asserts that no hand span exceeds 19 semitones. All 15 pieces pass.
+`npm test` runs two suites. The rig test checks the hand calibration, finger proportions, and key contact against the bind pose in `tests/fixtures/`. The smoke test checks the key layout and runs the fingering engine on all 15 MIDIs. It asserts that no hand span exceeds 19 semitones. All 15 pieces pass.
+
+Regenerate the rig fixtures after changing an asset:
+
+```bash
+npm run fixtures
+```
 
 ## Assets and sources
 
 - MIDI files: `public/midi/`, from the `zz85/midiviz` repository (gh-pages branch).
 - Piano samples: `public/samples/piano/`, the Salamander grand piano set from tonejs.github.io.
+- Hand meshes: `public/hands/`, the `generic-hand` profile of the WebXR Input Profiles, MIT licence, copyright 2019 Amazon. See `docs/hands-assets.md`.
 - The pieces are public-domain compositions. The MIDI renditions and samples belong to their respective authors.
 
 ## Limitations
