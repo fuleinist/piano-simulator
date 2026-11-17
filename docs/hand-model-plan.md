@@ -592,3 +592,22 @@ Real chords need per-finger IK over abduction, curl, and wrist orientation. That
 - Independent survey of mesh licences and counts: https://github.com/Frametop/frametop/blob/main/screens/assets/hands/README.md
 - Hand anthropometry (US adults): https://ergocenter.ncsu.edu/wp-content/uploads/sites/358/2026/02/01-Anthropometry-Summary-Tables.pdf
 - MANO licence (non-commercial): https://mano.is.tue.mpg.de/
+
+### Phase C results
+
+| Measure | Value |
+|---|---|
+| Hand meshes per hand | 1 skinned mesh, 25 bones |
+| Draw calls per hand | 1, down from about 40 |
+| Fingertip clearance at strike | 0.5 mm minimum, no chord below the surface |
+| Idle fingertip hover | 3 to 14 mm above the keys |
+| Worst chord residual, right hand | 56 mm |
+| Worst chord residual, left hand | 39 mm |
+| Bundle, gzipped | 295.38 kB, up from 278.89 kB |
+
+Two defects surfaced while wiring the mesh.
+
+1. `poseChain` skipped the tip leaf, so the last finger joint never moved and the fingertip stayed at its bind position. The mesh stretched instead of bending. The chain now poses every joint. A test asserts that a pose built from a solve lands on the solved tips.
+2. The new rig renders in metres. It needed an explicit group scale of 42.553, or the hand appeared at 1/42.5 of its size.
+
+The scene keeps three modes: rigged (default), `?hands=procedural`, and `?hands=debug`.

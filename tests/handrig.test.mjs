@@ -113,7 +113,7 @@ test('poseChain reproduces the accumulated rotation and the fingertip', () => {
   const abduction = 0.12;
   const { bones, tip } = poseChain(right, 3, curls, abduction);
 
-  assert.equal(bones.length, 4, 'metacarpal plus three phalanx bones');
+  assert.equal(bones.length, 5, 'metacarpal, three phalanx bones, and the tip');
 
   const axis = flexionAxis(right, 3);
   const abduct = qFromAxisAngle(right.normal, abduction);
@@ -130,7 +130,9 @@ test('poseChain reproduces the accumulated rotation and the fingertip', () => {
     // Joints in this asset hang off the armature, so local equals absolute.
     assert.ok(qDist(bone.localQuaternion, bone.world) < 1e-9, `${bone.name} local equals world`);
 
-    if (i + 1 < bones.length) {
+    // The bone at each joint carries the curl applied before it, so the last
+    // bone (the tip leaf) repeats the distal rotation.
+    if (i < curls.length) {
       total += curls[i];
       rotation = qMul(abduct, qFromAxisAngle(axis, total));
     }
@@ -199,4 +201,30 @@ test('no rig output is NaN', () => {
   for (const bone of bones) {
     assert.ok([...bone.world, ...bone.position].every(Number.isFinite), `${bone.name} is finite`);
   }
+});
+
+test('a pose built from the solve lands on the solved tips', () => {
+  const chord = [
+    { finger: 2, midi: 64 },
+    { finger: 3, midi: 67 },
+  ];
+  const curlsFor = (finger) => REST_CURLS[finger].map((v) => v + 0.08);
+  const solved = solveContact(
+    right,
+    chord.map((n) => ({ ...n, curls: curlsFor(n.finger) })),
+  );
+  const wristModel = right.worldPos.get('wrist');
+
+  chord.forEach((note, i) => {
+    const { tip } = poseChain(right, note.finger, curlsFor(note.finger), solved.abductions[i]);
+    const offset = applyCalibration(right, [
+      tip[0] - wristModel[0],
+      tip[1] - wristModel[1],
+      tip[2] - wristModel[2],
+    ]).map((v) => v * SCALE);
+    const expected = solved.tips[i];
+    const actual = [solved.wrist[0] + offset[0], solved.wrist[1] + offset[1], solved.wrist[2] + offset[2]];
+    const gapMm = Math.hypot(actual[0] - expected[0], actual[1] - expected[1], actual[2] - expected[2]) * 23.5;
+    assert.ok(gapMm < 0.05, `finger ${note.finger} pose matches the solve (${gapMm.toFixed(3)} mm)`);
+  });
 });

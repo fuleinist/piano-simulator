@@ -45,7 +45,7 @@ export const CHAINS = {
 
 // A relaxed playing hand: rounded knuckle, curved fingers. Radians.
 export const REST_CURLS = {
-  1: [0.25, 0.30],
+  1: [0.05, 0.05],
   2: [0.35, 0.45, 0.20],
   3: [0.35, 0.45, 0.20],
   4: [0.35, 0.45, 0.20],
@@ -290,7 +290,7 @@ export function poseChain(rig, finger, curls, abduction = 0) {
   let position = rig.worldPos.get(chain[0]).slice();
   let rotation = abduct;
 
-  for (let i = 0; i < chain.length - 1; i++) {
+  for (let i = 0; i < chain.length; i++) {
     const name = chain[i];
     const restQuat = rig.worldQuat.get(name);
     const parentName = rig.byName.get(name).parent;
@@ -305,11 +305,13 @@ export function poseChain(rig, finger, curls, abduction = 0) {
 
     // Advance to the next joint: the segment from this joint to the next one
     // rotates by the curl applied at this joint.
-    const nextName = chain[i + 1];
-    const segment = sub(rig.worldPos.get(nextName), rig.worldPos.get(name));
-    position = add(position, qRotate(rotation, segment));
-    if (i + 1 < chain.length - 1) {
-      rotation = qMul(rotation, qFromAxisAngle(axis, curls[i] ?? 0));
+    if (i + 1 < chain.length) {
+      const nextName = chain[i + 1];
+      const segment = sub(rig.worldPos.get(nextName), rig.worldPos.get(name));
+      position = add(position, qRotate(rotation, segment));
+      if (i + 1 < chain.length - 1) {
+        rotation = qMul(rotation, qFromAxisAngle(axis, curls[i] ?? 0));
+      }
     }
   }
   return { bones, tip: position };

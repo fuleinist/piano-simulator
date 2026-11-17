@@ -14,10 +14,14 @@ Each note draws a bar that travels in depth. The bar starts on the grand rim far
 
 Bar width encodes note weight. Loud melody notes draw wide bars. Soft accompaniment notes draw thin bars. Width ranges from about 0.29 to 0.56 key units. Bar color encodes the hand. Blue bars belong to the left hand. Orange bars belong to the right hand.
 
-### Two animated hands
-Each hand has a palm, a wrist, a forearm, four three-joint fingers, and an opposable thumb. A spring model moves the wrist between chords. The wrist lifts before a long shift and drops into the chord. Each finger curls to strike its key and lifts afterward. The thumb aims at its key with inverse kinematics. The hand rolls toward the direction of travel.
+### Two rigged hands
+Each hand is a skinned mesh with 25 joints, the WebXR hand skeleton. The mesh comes from the `generic-hand` profile of the WebXR Input Profiles, which is the asset Three.js uses for hand tracking. A rig module poses the bones, and a contact solve places the wrist so the playing fingertips meet their keys.
 
-A fingering engine assigns the fingers. It groups notes into chords, splits them between the hands, and searches for a comfortable assignment. A beam search limits the hand span and prefers small shifts. The layout and fingering modules import no Three.js, so you can test them in Node.
+The hand does not slide its fingers sideways. It rotates each metacarpal to spread the knuckles, and it lifts the wrist when a chord lies beyond the hand's reach. Between notes the fingers hover above the keys. On a strike they curl to the key surface.
+
+A fingering engine assigns the fingers. It groups notes into chords, splits them between the hands, and searches for a comfortable assignment. A beam search limits the hand span and prefers small shifts. The layout, fingering, and rig modules import no Three.js, so you can test them in Node.
+
+The original primitive hands remain as a fallback. Add `?hands=procedural` to the URL to use them, or `?hands=debug` to draw the skeletons.
 
 ### Selectable music
 The menu lists 15 famous pieces. You can also load any standard MIDI file from your disk. The player parses the file, splits the notes between the hands, and marks the melody.
@@ -82,6 +86,8 @@ npm run preview
 | Mouse wheel | Zoom in and out. |
 | Right drag | Move the view left and right along the keys. |
 | Record | Save a WebM video with audio. |
+| `?hands=procedural` | Use the primitive hands instead of the rigged mesh. |
+| `?hands=debug` | Draw the hand skeletons over the mesh. |
 
 ## Architecture
 
@@ -125,5 +131,6 @@ npm run fixtures
 ## Limitations
 
 - A few orchestral-reduction MIDIs contain chords wider than two hands can span. The engine stretches the hands to reach them. These chords look extended.
-- The hands are procedural models, not scanned human hands. They prioritize correct finger placement and motion over photoreal skin.
+- The rig cannot reach every chord with one curl set. A few wide chords land up to 56 mm from their keys, and the contact solve reports that gap rather than bending the hand further.
+- Skin is a single material with no texture maps. The mesh carries no nails, pores, or creases.
 - Recording uses the browser MediaRecorder API. Output is WebM. Some browsers may record video only if the audio tap is unavailable.
