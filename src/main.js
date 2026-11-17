@@ -129,8 +129,10 @@ window.addEventListener('resize', () => scene.resize());
 const clock = new THREE.Clock();
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  scene.update(dt);
   player.update(dt);
+  // Following presets need this frame's hand position before the camera moves.
+  scene.setFocus(hands.centerX());
+  scene.update(dt);
   piano.update(dt);
   scene.render();
   if (!seeking && player.duration) {

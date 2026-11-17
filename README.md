@@ -30,7 +30,7 @@ The menu lists 15 famous pieces. You can also load any standard MIDI file from y
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
 
 ### Camera and tempo
-The default view looks straight down at the keyboard. Five presets are available: top, perform, front, side, and close. OrbitControls lets you rotate, zoom, and pan left and right along the keys. The speed slider sets the tempo from 0.25x to 2x. A seek slider moves to any point. A loop toggle repeats the piece.
+The default view looks straight down at the keyboard. Five presets are available: top, perform, front, side, and close. The front, side, and close views slide along the keys with the player, so the hands stay in frame. A manual drag or pan releases the follow until you pick a preset again. OrbitControls lets you rotate, zoom, and pan left and right along the keys. The speed slider sets the tempo from 0.25x to 2x. A seek slider moves to any point. A loop toggle repeats the piece.
 
 ### Video recording
 The recorder captures the canvas and the audio to a WebM file. It uses the browser MediaRecorder API at 60 frames per second. Use it to save a performance for review or sharing.

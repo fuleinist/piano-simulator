@@ -604,6 +604,7 @@ Real chords need per-finger IK over abduction, curl, and wrist orientation. That
 | Worst chord residual, right hand | 56 mm |
 | Worst chord residual, left hand | 39 mm |
 | Bundle, gzipped | 295.38 kB, up from 278.89 kB |
+| Presets that frame a hand | 100% on all five, up from 0% on front and side |
 
 Two defects surfaced while wiring the mesh.
 
@@ -611,3 +612,5 @@ Two defects surfaced while wiring the mesh.
 2. The new rig renders in metres. It needed an explicit group scale of 42.553, or the hand appeared at 1/42.5 of its size.
 
 The scene keeps three modes: rigged (default), `?hands=procedural`, and `?hands=debug`.
+
+The front, side, and close presets now follow the hands along the keys, clamped to 22 units from their anchor. A drag, pan, or zoom hands control back to the user.

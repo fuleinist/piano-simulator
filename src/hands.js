@@ -411,6 +411,13 @@ export class Hands {
 
   seek(t) { this.L.seek(t); this.R.seek(t); }
 
+  // Centre of the playing hands, for a camera that follows the player.
+  centerX() {
+    if (!this.visible) return null;
+    const xs = [this.L, this.R].filter((h) => h.chords.length).map((h) => h.pos.x);
+    return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  }
+
   update(t, dt) {
     if (!this.visible) {
       this.L.root.visible = false;
