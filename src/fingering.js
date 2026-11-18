@@ -4,13 +4,16 @@
 //
 // Method:
 //  1. Split notes between hands by MIDI track median pitch, else by pitch.
-//  2. Group each hand's notes into chords (onsets within 45 ms).
+//  2. Group each hand's notes into chords (onsets within CHORD_WINDOW).
 //  3. Beam search over finger assignments. Cost favours small hand shifts,
 //     comfortable spans, finger reuse and pitch-ordered fingers.
 
 import { keyX, isBlack } from './layout.js';
 
-const CHORD_WINDOW = 0.045; // s
+// One shared chord window for grouping, dedup and melody marking. The
+// renderer and the measured baseline used the same window, so one constant
+// removes the mismatch.
+export const CHORD_WINDOW = 0.05; // s
 const BEAM = 10;
 
 // Natural finger offsets from the wrist, in white-key widths.

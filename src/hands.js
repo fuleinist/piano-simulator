@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { keyX, keyTopY, isBlack } from './layout.js';
+import { buildChords } from './chords.js';
 import { buildHand, SKIN } from './handprocedural.js';
 import {
   SCALE, REST_CURLS, STRIKE_CURLS, TIP_PAD, buildRig, poseChain, solveContact, fingerTip, chooseFingers,
@@ -40,35 +41,9 @@ function quatFromMatrix(m) {
 }
 
 // --- Chords ---------------------------------------------------------------
-export function buildChords(notes, hand) {
-  const ns = notes.filter((n) => n.hand === hand).sort((a, b) => a.time - b.time);
-  const chords = [];
-  let i = 0;
-  while (i < ns.length) {
-    let j = i;
-    while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= 0.05) j++;
-    const group = ns.slice(i, j + 1);
-    const fingers = {};
-    let sx = 0, sz = 0, top = 0;
-    for (const n of group) {
-      fingers[n.finger] = n;
-      sx += n.wristX;
-      sz += isBlack(n.midi) ? 0.1 : 1.9;
-      top = Math.max(top, keyTopY(n.midi));
-    }
-    chords.push({
-      time: group[0].time,
-      end: Math.max(...group.map((n) => n.time + n.duration)),
-      wristX: sx / group.length,
-      spread: group[0].spread || 1,
-      strikeZ: sz / group.length,
-      keyTop: top,
-      fingers,
-    });
-    i = j + 1;
-  }
-  return chords;
-}
+// The grouping lives in src/chords.js so Node tests can import it.
+// Re-export keeps the previous public surface so existing importers do not break.
+export { buildChords } from './chords.js';
 
 // --- Procedural controller (fallback) -------------------------------------
 class ProceduralHand {
