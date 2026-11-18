@@ -2,15 +2,19 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BOARD_W } from './layout.js';
+import { FRAMES, frameAspect, frameSize, fitBox } from './frames.js';
 
 // Camera presets. "top" is the default: a true 90° overhead view, with the
 // camera directly above its target, so the keys read at their real width and
 // a hand span can be judged by eye. Presets marked `follow` shift along the
 // keys with the hands, so the player stays in frame at either end of the
 // keyboard.
+//
+// A portrait recording is narrower than the keyboard, so the top view takes a
+// closer camera and follows the hands. `portraitPos` is that closer camera.
 export const PRESETS = {
   // pos.x/z equal target.x/z: the view direction is exactly (0, -1, 0).
-  top: { pos: [0, 46, 0], target: [0, 0, 0] },
+  top: { pos: [0, 46, 0], target: [0, 0, 0], portraitPos: [0, 28, 0], portraitFollow: true },
   perform: { pos: [0, 34, 30], target: [0, 1, -1] },
   front: { pos: [0, 7, 33], target: [0, 1.5, 0], follow: true },
   side: { pos: [36, 15, 20], target: [0, 1, 0], follow: true },
@@ -52,6 +56,11 @@ export class Scene {
     this._base = { pos: new THREE.Vector3(), target: new THREE.Vector3(), follow: false };
     this._followX = 0;
     this._focusX = null;
+
+    // Recording frame: null while the stage fills the window.
+    this._frameName = null;
+    this._portrait = false;
+    this._preset = 'top';
 
     // A user drag takes over from the preset, so the camera must not snap back.
     this._dragging = false;
@@ -109,15 +118,42 @@ export class Scene {
   }
 
   setPreset(name, instant = false) {
-    const p = PRESETS[name] || PRESETS.top;
-    this._base.pos.set(...p.pos);
+    const key = PRESETS[name] ? name : 'top';
+    const p = PRESETS[key];
+    this._preset = key;
+    const pos = (this._portrait && p.portraitPos) || p.pos;
+    this._base.pos.set(...pos);
     this._base.target.set(...p.target);
-    this._base.follow = Boolean(p.follow);
+    this._base.follow = Boolean(p.follow || (this._portrait && p.portraitFollow));
     this._followX = 0;
     if (instant) {
       this.camera.position.copy(this._base.pos);
       this.controls.target.copy(this._base.target);
     }
+  }
+
+  /**
+   * Set the recording frame, or clear it with null.
+   *
+   * A set frame gives the canvas the frame's shape at the frame's pixel size,
+   * and shows it centred in the window. The camera follows the shape, so the
+   * saved video has no letterbox. A portrait frame also picks the preset that
+   * fits it, because the keyboard is wider than a portrait frame.
+   */
+  setFrame(name) {
+    const wasPortrait = this._portrait;
+    this._frameName = name && FRAMES[name] ? name : null;
+    this._portrait = this._frameName !== null && frameAspect(this._frameName) < 1;
+
+    // The frame is recorded at its own pixel size, so the window pixel ratio
+    // must not multiply it.
+    if (this._frameName) this.renderer.setPixelRatio(1);
+    else this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // A portrait frame changes both the camera distance and the follow, so the
+    // preset has to be applied again.
+    if (this._portrait !== wasPortrait) this.setPreset(this._preset, true);
+    this.resize();
   }
 
   // Centre of the playing hands, in scene units. Following presets slide to it.
@@ -145,10 +181,42 @@ export class Scene {
     this._followX = 0;
   }
 
+  /**
+   * The frame's box on the page, in CSS pixels. With no frame set, the box is
+   * the whole window.
+   */
+  frameRect() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    if (!this._frameName) return { left: 0, top: 0, width: vw, height: vh };
+    const { width, height } = frameSize(this._frameName);
+    const box = fitBox(vw, vh, width / height);
+    return {
+      left: (vw - box.width) / 2,
+      top: (vh - box.height) / 2,
+      width: box.width,
+      height: box.height,
+    };
+  }
+
   resize() {
-    const w = window.innerWidth, h = window.innerHeight;
-    this.renderer.setSize(w, h);
-    this.camera.aspect = w / h;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const canvas = this.renderer.domElement;
+
+    if (this._frameName) {
+      // Draw at the video's own pixel size, then show that bitmap in the
+      // largest box of the same shape that fits the window.
+      const { width, height } = frameSize(this._frameName);
+      const box = this.frameRect();
+      this.renderer.setSize(width, height, false);
+      canvas.classList.add('framed');
+      canvas.style.width = `${box.width}px`;
+      canvas.style.height = `${box.height}px`;
+      this.camera.aspect = width / height;
+    } else {
+      canvas.classList.remove('framed');
+      this.renderer.setSize(vw, vh);
+      this.camera.aspect = vw / vh;
+    }
     this.camera.updateProjectionMatrix();
   }
 

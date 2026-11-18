@@ -28,6 +28,10 @@ export class Player {
     this.active = new Map(); // midi -> releaseTime
     this.ready = false;
     this.onState = null;
+    // Fired once when the piece reaches its end. A new load or a seek does not
+    // fire it; pressing play again from the end does not either, because the
+    // transport restarts from zero.
+    this.onEnd = null;
     this._buildAudio();
   }
 
@@ -100,7 +104,13 @@ export class Player {
       this.time += dt * this.speed;
       if (this.time >= this.duration) {
         if (this.loop) { this.seek(0); }
-        else { this.time = this.duration; this.playing = false; this._releaseAll(); this._emit(); }
+        else {
+          this.time = this.duration;
+          this.playing = false;
+          this._releaseAll();
+          this._emit();
+          if (this.onEnd) this.onEnd();
+        }
       }
       this._trigger(prev, this.time);
     }

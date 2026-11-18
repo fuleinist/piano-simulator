@@ -5,6 +5,7 @@ import { Bars } from './bars.js';
 import { Hands } from './hands.js';
 import { Player } from './player.js';
 import { Recorder } from './recorder.js';
+import { FramePreview } from './framepreview.js';
 import { SONGS } from './songs.js';
 
 const $ = (id) => document.getElementById(id);
@@ -15,7 +16,13 @@ const piano = new Piano(scene.scene);
 const bars = new Bars(scene.scene);
 const hands = new Hands(scene.scene);
 const player = new Player(piano, bars, hands);
-const recorder = new Recorder(canvas);
+const recorder = new Recorder(canvas, scene);
+const preview = new FramePreview(scene, $('framePreview'));
+
+// How long the recorder keeps rolling after the piece ends, in seconds. The
+// sampler releases the final chord over about a second, so an instant stop
+// would cut the sound off.
+const RECORD_TAIL_S = 2;
 
 // --- Song library --------------------------------------------------------
 const sel = $('songSelect');
@@ -100,9 +107,28 @@ recorder.onState = (r) => {
   const b = $('recordBtn');
   b.classList.toggle('on', r.recording);
   b.textContent = r.recording ? '■ Stop recording' : '● Record video';
-  $('recHint').textContent = r.recording ? 'Recording… press Stop to save.' : 'Saves a WebM with audio.';
+  // The shape cannot change while a capture runs, so lock the buttons.
+  document.querySelectorAll('[data-frame]').forEach((x) => { x.disabled = r.recording; });
+  if (r.stopping) $('recHint').textContent = 'Finishing the last chord…';
+  else if (r.recording) $('recHint').textContent = `Recording ${recorder.frame}. Press Stop to save now.`;
+  else $('recHint').textContent = 'Saves a WebM with audio. Stops when the piece ends.';
 };
-$('recordBtn').addEventListener('click', () => recorder.toggle());
+$('recordBtn').addEventListener('click', () => { preview.clear(); recorder.toggle(); });
+
+document.querySelectorAll('[data-frame]').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-frame]').forEach((x) => x.classList.toggle('active', x === b));
+    recorder.frame = b.dataset.frame;
+    // Show the frame for a few seconds, so the shape can be checked first.
+    preview.show(recorder.frame);
+    $('recHint').textContent = `Records at ${recorder.frame}. Stops when the piece ends.`;
+  });
+});
+
+// A recording follows the piece: it stops itself a moment after the last note.
+player.onEnd = () => {
+  if (recorder.recording) recorder.stopIn(RECORD_TAIL_S);
+};
 
 // --- Keyboard ------------------------------------------------------------
 window.addEventListener('keydown', (e) => {
@@ -114,7 +140,7 @@ window.addEventListener('keydown', (e) => {
     case 'Equal': case 'NumpadAdd': scene.zoomBy(0.8); break;
     case 'Minus': case 'NumpadSubtract': scene.zoomBy(1.25); break;
     case 'KeyL': $('loopToggle').checked = player.loop = !player.loop; break;
-    case 'KeyR': recorder.toggle(); break;
+    case 'KeyR': preview.clear(); recorder.toggle(); break;
     case 'Digit1': scene.setPreset('top'); break;
     case 'Digit2': scene.setPreset('perform'); break;
     case 'Digit3': scene.setPreset('front'); break;
@@ -123,7 +149,7 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-window.addEventListener('resize', () => scene.resize());
+window.addEventListener('resize', () => { scene.resize(); preview.refresh(); });
 
 // --- Main loop -----------------------------------------------------------
 const clock = new THREE.Clock();
@@ -149,4 +175,4 @@ loadSong(SONGS[0]).then(() => {
 frame();
 
 // Debug/test handle (harmless in production).
-window.__piano = { player, scene, piano, bars, hands, recorder, THREE };
+window.__piano = { player, scene, piano, bars, hands, recorder, preview, THREE };

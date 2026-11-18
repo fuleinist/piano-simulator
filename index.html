@@ -53,8 +53,13 @@
       <input id="volume" type="range" min="0" max="1" step="0.01" value="0.9" />
     </section>
     <section>
+      <h2>Record</h2>
+      <div class="row frame-row">
+        <button data-frame="16:9" class="btn small active">16:9</button>
+        <button data-frame="9:16" class="btn small">9:16</button>
+      </div>
       <button id="recordBtn" class="btn record">● Record video</button>
-      <p class="hint" id="recHint">Saves a WebM with audio.</p>
+      <p class="hint" id="recHint">Saves a WebM with audio. Stops when the piece ends.</p>
     </section>
   </aside>
 
@@ -68,6 +73,8 @@
       <span id="speedLabel">1.00×</span>
     </div>
   </footer>
+
+  <div id="framePreview" hidden></div>
 
   <div id="loader"><div class="spin"></div><p id="loaderText">Loading samples…</p></div>
 
