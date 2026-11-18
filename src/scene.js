@@ -4,13 +4,18 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BOARD_W } from './layout.js';
 
 // Camera presets. "top" is the default: a steep overhead view of the keyboard.
+// Presets marked `follow` shift along the keys with the hands, so the player
+// stays in frame at either end of the keyboard.
 export const PRESETS = {
   top: { pos: [0, 46, 17], target: [0, 0, -1] },
   perform: { pos: [0, 34, 30], target: [0, 1, -1] },
-  front: { pos: [0, 7, 33], target: [0, 1.5, 0] },
-  side: { pos: [36, 15, 20], target: [0, 1, 0] },
-  close: { pos: [6, 13, 15], target: [4, 0.5, 1] },
+  front: { pos: [0, 7, 33], target: [0, 1.5, 0], follow: true },
+  side: { pos: [36, 15, 20], target: [0, 1, 0], follow: true },
+  close: { pos: [6, 13, 15], target: [4, 0.5, 1], follow: true },
 };
+
+// How far a following preset may slide from its anchor, in scene units.
+const FOLLOW_LIMIT = 22;
 
 export class Scene {
   constructor(canvas) {
@@ -38,6 +43,24 @@ export class Scene {
     this._lights();
     this._environment();
     this._floor();
+
+    // Camera state. `_base` is the preset anchor, and `_followX` is the slide
+    // along the keys that keeps the hands in frame.
+    this._base = { pos: new THREE.Vector3(), target: new THREE.Vector3(), follow: false };
+    this._followX = 0;
+    this._focusX = null;
+
+    // A user drag takes over from the preset, so the camera must not snap back.
+    this._dragging = false;
+    this.controls.addEventListener('start', () => {
+      this._dragging = true;
+      this._base.follow = false;
+      this._base.pos.copy(this.camera.position);
+      this._base.target.copy(this.controls.target);
+      this._followX = 0;
+    });
+    this.controls.addEventListener('end', () => { this._dragging = false; });
+
     this.setPreset('top', true);
     this.resize();
   }
@@ -84,18 +107,28 @@ export class Scene {
 
   setPreset(name, instant = false) {
     const p = PRESETS[name] || PRESETS.top;
-    this._goal = { pos: new THREE.Vector3(...p.pos), target: new THREE.Vector3(...p.target) };
+    this._base.pos.set(...p.pos);
+    this._base.target.set(...p.target);
+    this._base.follow = Boolean(p.follow);
+    this._followX = 0;
     if (instant) {
-      this.camera.position.copy(this._goal.pos);
-      this.controls.target.copy(this._goal.target);
-      this._goal = null;
+      this.camera.position.copy(this._base.pos);
+      this.controls.target.copy(this._base.target);
     }
   }
 
+  // Centre of the playing hands, in scene units. Following presets slide to it.
+  setFocus(x) {
+    this._focusX = Number.isFinite(x) ? x : null;
+  }
+
   panBy(dx) {
+    this._base.follow = false;
     this.camera.position.x += dx;
     this.controls.target.x += dx;
-    this._goal = null;
+    this._base.pos.copy(this.camera.position);
+    this._base.target.copy(this.controls.target);
+    this._followX = 0;
   }
 
   zoomBy(factor) {
@@ -103,7 +136,10 @@ export class Scene {
     const len = THREE.MathUtils.clamp(dir.length() * factor, this.controls.minDistance, this.controls.maxDistance);
     dir.setLength(len);
     this.camera.position.copy(this.controls.target).add(dir);
-    this._goal = null;
+    this._base.follow = false;
+    this._base.pos.copy(this.camera.position);
+    this._base.target.copy(this.controls.target);
+    this._followX = 0;
   }
 
   resize() {
@@ -114,12 +150,32 @@ export class Scene {
   }
 
   update(dt) {
-    if (this._goal) {
-      const k = 1 - Math.pow(0.001, dt); // smooth approach
-      this.camera.position.lerp(this._goal.pos, k);
-      this.controls.target.lerp(this._goal.target, k);
-      if (this.camera.position.distanceTo(this._goal.pos) < 0.05) this._goal = null;
+    // Slide a following preset along the keys toward the hands.
+    const follow = this._base.follow && this._focusX !== null;
+    const wantX = follow
+      ? THREE.MathUtils.clamp(this._focusX - this._base.target.x, -FOLLOW_LIMIT, FOLLOW_LIMIT)
+      : 0;
+    this._followX += (wantX - this._followX) * (1 - Math.pow(0.02, dt));
+
+    // Never fight a user drag with the preset lerp.
+    if (this._dragging) {
+      this.controls.update();
+      return;
     }
+
+    const k = 1 - Math.pow(0.001, dt); // smooth approach
+    const goalPos = new THREE.Vector3(
+      this._base.pos.x + this._followX,
+      this._base.pos.y,
+      this._base.pos.z,
+    );
+    const goalTarget = new THREE.Vector3(
+      this._base.target.x + this._followX,
+      this._base.target.y,
+      this._base.target.z,
+    );
+    this.camera.position.lerp(goalPos, k);
+    this.controls.target.lerp(goalTarget, k);
     this.controls.update();
   }
 

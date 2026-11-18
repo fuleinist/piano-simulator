@@ -1,0 +1,388 @@
+{
+  "source": "left.glb",
+  "generator": "Khronos glTF Blender I/O v3.3.32",
+  "vertexCount": 1360,
+  "boundsMm": [
+    77,
+    212,
+    146
+  ],
+  "units": "metres",
+  "joints": [
+    {
+      "name": "pinky-finger-tip",
+      "parent": "Armature",
+      "translation": [
+        -0.0155625,
+        -0.0819207,
+        0.060045
+      ],
+      "rotation": [
+        -0.47842,
+        0.6193712,
+        0.515121,
+        0.3494911
+      ]
+    },
+    {
+      "name": "pinky-finger-phalanx-distal",
+      "parent": "Armature",
+      "translation": [
+        -0.0163523,
+        -0.070417,
+        0.0570688
+      ],
+      "rotation": [
+        -0.4820375,
+        0.621573,
+        0.5104834,
+        0.3474098
+      ]
+    },
+    {
+      "name": "pinky-finger-phalanx-intermediate",
+      "parent": "Armature",
+      "translation": [
+        -0.0192069,
+        -0.0514167,
+        0.0504814
+      ],
+      "rotation": [
+        -0.5180792,
+        0.627426,
+        0.4979429,
+        0.2999726
+      ]
+    },
+    {
+      "name": "pinky-finger-phalanx-proximal",
+      "parent": "Armature",
+      "translation": [
+        -0.023633,
+        -0.0179096,
+        0.043168
+      ],
+      "rotation": [
+        -0.52398,
+        0.5875871,
+        0.516337,
+        0.33702
+      ]
+    },
+    {
+      "name": "pinky-finger-metacarpal",
+      "parent": "Armature",
+      "translation": [
+        -0.0279043,
+        0.0219127,
+        0.0311125
+      ],
+      "rotation": [
+        -0.4727671,
+        0.6386726,
+        0.5336525,
+        0.2894888
+      ]
+    },
+    {
+      "name": "ring-finger-tip",
+      "parent": "Armature",
+      "translation": [
+        -0.0223819,
+        -0.1075859,
+        0.0436366
+      ],
+      "rotation": [
+        -0.5114534,
+        0.573781,
+        0.5038201,
+        0.3941524
+      ]
+    },
+    {
+      "name": "ring-finger-phalanx-distal",
+      "parent": "Armature",
+      "translation": [
+        -0.0231555,
+        -0.0959017,
+        0.0413061
+      ],
+      "rotation": [
+        -0.5157425,
+        0.5801672,
+        0.5023487,
+        0.3808694
+      ]
+    },
+    {
+      "name": "ring-finger-phalanx-intermediate",
+      "parent": "Armature",
+      "translation": [
+        -0.0264394,
+        -0.0703282,
+        0.034875
+      ],
+      "rotation": [
+        -0.5413359,
+        0.5764594,
+        0.4967612,
+        0.3576007
+      ]
+    },
+    {
+      "name": "ring-finger-phalanx-proximal",
+      "parent": "Armature",
+      "translation": [
+        -0.0307949,
+        -0.0287075,
+        0.0255792
+      ],
+      "rotation": [
+        -0.5533527,
+        0.5579478,
+        0.4862256,
+        0.3822039
+      ]
+    },
+    {
+      "name": "ring-finger-metacarpal",
+      "parent": "Armature",
+      "translation": [
+        -0.0316177,
+        0.0289957,
+        0.0163798
+      ],
+      "rotation": [
+        -0.4902721,
+        0.5993519,
+        0.5189192,
+        0.3621235
+      ]
+    },
+    {
+      "name": "middle-finger-tip",
+      "parent": "Armature",
+      "translation": [
+        -0.0285608,
+        -0.1214215,
+        0.0154163
+      ],
+      "rotation": [
+        -0.4837684,
+        0.5799127,
+        0.4660278,
+        0.4609638
+      ]
+    },
+    {
+      "name": "middle-finger-phalanx-distal",
+      "parent": "Armature",
+      "translation": [
+        -0.0275314,
+        -0.1093694,
+        0.0137999
+      ],
+      "rotation": [
+        -0.4928462,
+        0.5860537,
+        0.4549646,
+        0.4545887
+      ]
+    },
+    {
+      "name": "middle-finger-phalanx-intermediate",
+      "parent": "Armature",
+      "translation": [
+        -0.0303027,
+        -0.0821293,
+        0.0107542
+      ],
+      "rotation": [
+        -0.5394282,
+        0.510322,
+        0.5058163,
+        0.4390199
+      ]
+    },
+    {
+      "name": "middle-finger-phalanx-proximal",
+      "parent": "Armature",
+      "translation": [
+        -0.034781,
+        -0.0356604,
+        0.006388
+      ],
+      "rotation": [
+        -0.542233,
+        0.5000708,
+        0.5059326,
+        0.447152
+      ]
+    },
+    {
+      "name": "middle-finger-metacarpal",
+      "parent": "Armature",
+      "translation": [
+        -0.0316177,
+        0.0268799,
+        0.0048548
+      ],
+      "rotation": [
+        -0.4757655,
+        0.5179136,
+        0.5362813,
+        0.4667066
+      ]
+    },
+    {
+      "name": "index-finger-tip",
+      "parent": "Armature",
+      "translation": [
+        -0.025165,
+        -0.1134312,
+        -0.0113111
+      ],
+      "rotation": [
+        -0.5076467,
+        0.5416582,
+        0.4625136,
+        0.4847499
+      ]
+    },
+    {
+      "name": "index-finger-phalanx-distal",
+      "parent": "Armature",
+      "translation": [
+        -0.0245551,
+        -0.1019338,
+        -0.0125777
+      ],
+      "rotation": [
+        -0.513785,
+        0.5400512,
+        0.4610531,
+        0.4814558
+      ]
+    },
+    {
+      "name": "index-finger-phalanx-intermediate",
+      "parent": "Armature",
+      "translation": [
+        -0.0267737,
+        -0.0777682,
+        -0.013908
+      ],
+      "rotation": [
+        -0.5382314,
+        0.4891959,
+        0.5052359,
+        0.4644685
+      ]
+    },
+    {
+      "name": "index-finger-phalanx-proximal",
+      "parent": "Armature",
+      "translation": [
+        -0.0300077,
+        -0.03601,
+        -0.0154367
+      ],
+      "rotation": [
+        -0.5444236,
+        0.4722786,
+        0.4954669,
+        0.4848386
+      ]
+    },
+    {
+      "name": "index-finger-metacarpal",
+      "parent": "Armature",
+      "translation": [
+        -0.0318361,
+        0.0195827,
+        -0.0013779
+      ],
+      "rotation": [
+        -0.4532654,
+        0.4435975,
+        0.5670295,
+        0.5255944
+      ]
+    },
+    {
+      "name": "thumb-tip",
+      "parent": "Armature",
+      "translation": [
+        0.011588,
+        -0.0356918,
+        -0.0697847
+      ],
+      "rotation": [
+        -0.3449789,
+        -0.112945,
+        0.2080985,
+        0.9082555
+      ]
+    },
+    {
+      "name": "thumb-phalanx-distal",
+      "parent": "Armature",
+      "translation": [
+        0.0063877,
+        -0.027137,
+        -0.0587986
+      ],
+      "rotation": [
+        -0.3419428,
+        -0.1081819,
+        0.2115199,
+        0.9091926
+      ]
+    },
+    {
+      "name": "thumb-phalanx-proximal",
+      "parent": "Armature",
+      "translation": [
+        -0.0030165,
+        -0.0032324,
+        -0.0368418
+      ],
+      "rotation": [
+        -0.4189,
+        -0.0301702,
+        0.2551364,
+        0.8709295
+      ]
+    },
+    {
+      "name": "thumb-metacarpal",
+      "parent": "Armature",
+      "translation": [
+        -0.0181664,
+        0.0200278,
+        -0.0199146
+      ],
+      "rotation": [
+        -0.4703247,
+        -0.1282258,
+        0.2412998,
+        0.8391229
+      ]
+    },
+    {
+      "name": "wrist",
+      "parent": "Armature",
+      "translation": [
+        -0.0373242,
+        0.0559862,
+        0.0081139
+      ],
+      "rotation": [
+        -0.5,
+        0.4999999,
+        0.5000001,
+        0.5
+      ]
+    }
+  ]
+}

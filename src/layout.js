@@ -12,7 +12,23 @@ export const BLACK_LEN = 4.0;
 export const BLACK_TOP = 0.5;
 export const KEY_FRONT_Z = WHITE_LEN / 2; // +3.2
 export const KEY_BACK_Z = -WHITE_LEN / 2; // -3.2
-export const STRIKE_Z = 1.55; // where fingertips meet the keys
+export const STRIKE_Z = 1.55; // where fingertips meet the white keys
+export const BLACK_FRONT_Z = KEY_BACK_Z + BLACK_LEN; // +0.8, front edge of a black key
+export const BLACK_STRIKE_Z = 0.35; // black keys are struck near their front edge
+
+// Where a fingertip meets this key. A black key ends well before a white one,
+// so one strike depth for both would leave the tip hanging past the black key.
+export function keyStrikeZ(midi) {
+  return isBlack(midi) ? BLACK_STRIKE_Z : STRIKE_Z;
+}
+
+// The depth range a fingertip may land on and still be on this key's surface.
+// The thumb reaches less far forward than the fingers, so a chord needs the
+// whole range, not one point, for every tip to stay on its key.
+export function keyStrikeRange(midi) {
+  const back = KEY_BACK_Z + 0.3;
+  return isBlack(midi) ? [back, BLACK_FRONT_Z - 0.3] : [back, KEY_FRONT_Z - 0.3];
+}
 export const FALL_Z = -1.9; // where the note bars land
 export const WHITE_COUNT = 52;
 export const BOARD_W = WHITE_COUNT * WHITE_W; // 52
@@ -54,6 +70,30 @@ export function keyX(midi) {
 
 export function keyWidth(midi) {
   return isBlack(midi) ? BLACK_W : WHITE_W;
+}
+
+// Black keys indexed by the number of white keys before them, so a lateral
+// position can find the key surface above it without scanning all 88 keys.
+const BLACK_AT_GAP = new Map();
+{
+  let white = 0;
+  for (let m = MIDI_MIN; m <= MIDI_MAX; m++) {
+    if (isBlack(m)) BLACK_AT_GAP.set(white, m);
+    else white++;
+  }
+}
+
+// Height of the key surface under a fingertip. A black key rides above the
+// white keys beside it, but only over the back part of the keyboard, so a tip
+// resting near the front edge clears the white key even beside a black one.
+export function keyTopAtX(x, z = STRIKE_Z) {
+  if (z < KEY_BACK_Z || z > BLACK_FRONT_Z) return 0;
+  const i = Math.floor(x - X_MIN);
+  for (const gap of [i, i + 1]) {
+    const m = BLACK_AT_GAP.get(gap);
+    if (m !== undefined && Math.abs(x - keyX(m)) <= BLACK_W / 2) return BLACK_TOP;
+  }
+  return 0;
 }
 
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
