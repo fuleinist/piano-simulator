@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import MidiPkg from '@tonejs/midi';
 const { Midi } = MidiPkg;
-import { assignFingering, markMelody } from '../src/fingering.js';
+import { assignFingering, markMelody, CHORD_WINDOW } from '../src/fingering.js';
 import { keyX, isBlack, noteName, midiFromName, MIDI_MIN, MIDI_MAX, WHITE_COUNT } from '../src/layout.js';
 
 const dir = path.resolve('public/midi');
@@ -51,7 +51,7 @@ for (const f of files) {
     let i = 0;
     while (i < ns.length) {
       let j = i;
-      while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= 0.045) j++;
+      while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= CHORD_WINDOW) j++;
       const span = ns[j].midi - ns[i].midi;
       if (span > 19) bigSpan++;
       i = j + 1;

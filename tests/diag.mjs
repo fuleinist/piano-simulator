@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import MidiPkg from '@tonejs/midi';
 const { Midi } = MidiPkg;
-import { assignFingering } from '../src/fingering.js';
+import { assignFingering, CHORD_WINDOW } from '../src/fingering.js';
 
 for (const f of ['grieg_op12_1_arietta.mid', 'liz_liebestraum.mid', 'pachelbel_canon.mid']) {
   const midi = new Midi(fs.readFileSync('public/midi/' + f));
@@ -17,7 +17,7 @@ for (const f of ['grieg_op12_1_arietta.mid', 'liz_liebestraum.mid', 'pachelbel_c
     let i = 0;
     while (i < ns.length) {
       let j = i;
-      while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= 0.045) j++;
+      while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= CHORD_WINDOW) j++;
       const span = ns[j].midi - ns[i].midi;
       if (span > 16) {
         console.log(f, hand, 't=' + ns[i].time.toFixed(3), 'count=' + (j - i + 1), 'span=' + span,

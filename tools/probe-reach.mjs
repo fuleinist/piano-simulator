@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as MidiNS from '@tonejs/midi';
-import { assignFingering } from '../src/fingering.js';
+import { assignFingering, CHORD_WINDOW } from '../src/fingering.js';
 import { keyTopY } from '../src/layout.js';
 import {
   buildRig, solveContact, chooseFingers, REST_CURLS, STRIKE_CURLS,
@@ -22,7 +22,7 @@ function chordsOf(notes, hand) {
   let i = 0;
   while (i < ns.length) {
     let j = i;
-    while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= 0.05) j++;
+    while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= CHORD_WINDOW) j++;
     const g = ns.slice(i, j + 1);
     const fingers = {};
     for (const n of g) fingers[n.finger] = n;

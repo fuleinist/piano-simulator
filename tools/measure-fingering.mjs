@@ -9,35 +9,13 @@ import { keyX, isBlack, keyTopY } from '../src/layout.js';
 import {
   buildRig, solveContact, chooseFingers, reachRange, REST_CURLS, STRIKE_CURLS,
 } from '../src/handrig.js';
+import { buildChords } from '../src/chords.js';
 
 const Midi = MidiNS.Midi || (MidiNS.default && MidiNS.default.Midi) || MidiNS.default;
 const ROOT = path.resolve(import.meta.dirname, '..');
 const load = (side) => buildRig(JSON.parse(
   fs.readFileSync(path.join(ROOT, 'tests/fixtures', `hand-${side}.json`), 'utf8')));
 const rigs = { L: load('left'), R: load('right') };
-
-export function buildChords(notes, hand) {
-  const ns = notes.filter((n) => n.hand === hand).sort((a, b) => a.time - b.time);
-  const chords = [];
-  let i = 0;
-  while (i < ns.length) {
-    let j = i;
-    while (j + 1 < ns.length && ns[j + 1].time - ns[i].time <= 0.05) j++;
-    const group = ns.slice(i, j + 1);
-    const fingers = {};
-    let sx = 0;
-    for (const n of group) { fingers[n.finger] = n; sx += n.wristX; }
-    chords.push({
-      time: group[0].time,
-      end: Math.max(...group.map((n) => n.time + n.duration)),
-      wristX: sx / group.length,
-      keyTop: Math.max(...group.map((n) => keyTopY(n.midi))),
-      fingers,
-    });
-    i = j + 1;
-  }
-  return chords;
-}
 
 function solveSong(file) {
   const buf = fs.readFileSync(path.join(ROOT, 'public/midi', file));
