@@ -4,6 +4,7 @@ import {
   MIDI_MIN, MIDI_MAX, WHITE_W, WHITE_LEN, WHITE_H, BLACK_W, BLACK_LEN, BLACK_TOP,
   KEY_BACK_Z, KEY_FRONT_Z, BOARD_W, keyX, isBlack, noteName,
 } from './layout.js';
+import { keyHighlight } from './keylight.js';
 
 const PRESS_ANGLE = 0.05;
 
@@ -39,7 +40,11 @@ export class Piano {
       mesh.position.set(0, black ? BLACK_TOP - 0.25 : -WHITE_H / 2, (black ? BLACK_LEN : WHITE_LEN) / 2);
       pivot.add(mesh);
       this.group.add(pivot);
-      this.keys.set(m, { pivot, mat, target: 0, glow: 0, glowTarget: 0, color: new THREE.Color(0xffffff) });
+      this.keys.set(m, {
+        pivot, mat, black,
+        baseColor: mat.color.clone(),
+        target: 0, glow: 0, glowTarget: 0, color: new THREE.Color(0xffffff),
+      });
     }
   }
 
@@ -126,7 +131,11 @@ export class Piano {
     for (const key of this.keys.values()) {
       key.pivot.rotation.x += (key.target - key.pivot.rotation.x) * k;
       key.glow += (key.glowTarget - key.glow) * k;
-      key.mat.emissive.copy(key.color).multiplyScalar(key.glow * 0.6);
+      const light = keyHighlight(key.glow, key.black);
+      // Ivory keys need their body colour moved to show the press at all: see
+      // keylight.js for why emissive alone is invisible on them.
+      key.mat.color.copy(key.baseColor).lerp(key.color, light.tint);
+      key.mat.emissive.copy(key.color).multiplyScalar(light.emissive);
     }
   }
 }
