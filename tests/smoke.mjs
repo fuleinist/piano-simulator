@@ -6,6 +6,7 @@ import MidiPkg from '@tonejs/midi';
 const { Midi } = MidiPkg;
 import { assignFingering, markMelody, CHORD_WINDOW } from '../src/fingering.js';
 import { keyX, isBlack, noteName, midiFromName, MIDI_MIN, MIDI_MAX, WHITE_COUNT } from '../src/layout.js';
+import { PRESETS } from '../src/scene.js';
 
 const dir = path.resolve('public/midi');
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.mid'));
@@ -24,6 +25,16 @@ if (noteName(60) !== 'C4') fail('noteName(60) != C4');
 if (midiFromName('A0') !== 21) fail('midiFromName(A0) != 21');
 if (midiFromName('C8') !== 108) fail('midiFromName(C8) != 108');
 console.log(`layout: ${whites} white keys, 88 total — OK`);
+
+// View check. The default view is a true overhead view: the camera sits
+// directly above its target, so key widths and hand spans read without
+// keystone. An angled camera here would silently break that.
+const top = PRESETS.top;
+const EPS = 1e-9;
+const topVertical = Math.abs(top.pos[0] - top.target[0]) <= EPS && Math.abs(top.pos[2] - top.target[2]) <= EPS;
+if (!topVertical) fail(`top preset is not vertical: pos [${top.pos}] target [${top.target}]`);
+if (!(top.pos[1] > top.target[1])) fail('top preset does not look down at the keys');
+else if (topVertical) console.log(`view: top camera ${top.pos[1]} units above the keys, 90° down — OK`);
 
 for (const f of files) {
   const midi = new Midi(fs.readFileSync(path.join(dir, f)));
