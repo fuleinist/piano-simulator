@@ -16,6 +16,11 @@ export const NAIL = new THREE.MeshPhysicalMaterial({
   color: 0xf0d3c4, roughness: 0.25, clearcoat: 0.8, clearcoatRoughness: 0.2,
 });
 
+// Knuckle fan of the primitive hands: radians per key of extra chord span, and
+// its limit. The knuckle stays put, so the palm keeps its width.
+export const FAN_PER_UNIT = 0.22;
+export const MAX_FAN = 0.5;
+
 function capsule(radius, len) {
   const g = new THREE.CapsuleGeometry(radius, len, 6, 14);
   g.rotateX(-Math.PI / 2); // lie along -Z

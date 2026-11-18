@@ -29,7 +29,9 @@ All numbers below come from `src/hands.js`, `src/layout.js`, and `src/piano.js`.
 
 Two behaviours add to the CG look:
 
-1. Fingers spread by sliding sideways (`finger.mcp.position.x = baseX * spread`). A real hand spreads by rotating the metacarpals.
+1. Fingers spread by sliding sideways (`finger.mcp.position.x = baseX * spread`). A real hand spreads at the knuckle, while the metacarpals hold the palm width.
+
+   **Correction:** the rig now fans the four fingers at the MCP and keeps every metacarpal in its bind pose. The thumb is the exception, because its metacarpal swings from the wrist. See `fansAtKnuckle` in `src/handrig.js`.
 2. The code fixes the fingertip height at chord time. It does not follow the key dip, which is `PRESS_ANGLE = 0.05` rad in `src/piano.js`.
 
 ## 2. Research: five candidate hand models

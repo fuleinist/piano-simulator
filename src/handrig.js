@@ -21,8 +21,28 @@ export const SPREAD_UNIT = 0.83;
 /** Fingertip pad radius, in scene units, so a tip rests on a key surface. */
 export const TIP_PAD = 0.06;
 
-/** Maximum abduction the solver allows, in radians. */
-export const MAX_ABDUCTION = 0.35;
+/**
+ * Maximum abduction the solver allows, in radians.
+ *
+ * The four fingers fan at the knuckle, so abduction moves only the finger and
+ * adds no palm width. This cap is wider than the 0.35 rad a metacarpal swing
+ * needed, because the fan now has only the phalanges to work with. The rig
+ * hand spans 158 mm, against about 193 mm for an adult hand, so the extra fan
+ * covers part of that gap.
+ */
+export const MAX_ABDUCTION = 0.55;
+
+/**
+ * True when a finger fans from its knuckle (the MCP) instead of from the base
+ * of its metacarpal (the CMC).
+ *
+ * The four fingers fan this way. Their metacarpals are bound into the palm, so
+ * the palm keeps its width while the fingers open and close. Only the thumb
+ * swings from its base joint, the saddle joint at the wrist.
+ */
+export function fansAtKnuckle(finger) {
+  return finger !== 1;
+}
 
 /** Finger numbers in anatomical order, thumb to pinky. */
 export const FINGERS = [1, 2, 3, 4, 5];
@@ -97,6 +117,7 @@ const normalize = (a) => {
 
 // --- quaternion helpers ---------------------------------------------------
 // Quaternions are [x, y, z, w].
+const IDENTITY = [0, 0, 0, 1];
 export const qMul = (a, b) => [
   a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
   a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
@@ -277,15 +298,19 @@ export function fingerTip(rig, finger, curls, abduction = 0, roll = 0) {
   const axis = flexionAxis(rig, finger);
   const abduct = abduction === 0 ? null : qFromAxisAngle(rig.normal, abduction);
 
-  // Abduction swings the metacarpal, so the MCP itself moves.
+  // The palm holds its width. A knuckle fan leaves the metacarpal in its bind
+  // pose, so only the finger swings. The thumb swings from its base joint, so
+  // its metacarpal moves with it.
   const cmc = rig.worldPos.get(chain[0]);
   const mcp = rig.worldPos.get(chain[1]);
-  let tip = abduct ? add(cmc, qRotate(abduct, sub(mcp, cmc))) : mcp.slice();
+  let tip = abduct && !fansAtKnuckle(finger)
+    ? add(cmc, qRotate(abduct, sub(mcp, cmc)))
+    : mcp.slice();
   let total = 0;
   for (let i = 0; i < rig.segments[finger].length; i++) {
     total += curls[i] ?? 0;
     // Flexion happens in the finger's own frame; abduction rotates that whole
-    // frame at the metacarpal head, so it applies outside the flexion.
+    // frame about the knuckle, so it applies outside the flexion.
     let seg = qRotate(qFromAxisAngle(axis, total), rig.segments[finger][i]);
     if (abduct) seg = qRotate(abduct, seg);
     tip = add(tip, seg);
@@ -305,7 +330,9 @@ export function fingerSamples(rig, finger, curls, abduction = 0, roll = 0) {
   const abduct = abduction === 0 ? null : qFromAxisAngle(rig.normal, abduction);
   const cmc = rig.worldPos.get(chain[0]);
   const mcp = rig.worldPos.get(chain[1]);
-  const joints = [cmc, abduct ? add(cmc, qRotate(abduct, sub(mcp, cmc))) : mcp];
+  const joints = [cmc, abduct && !fansAtKnuckle(finger)
+    ? add(cmc, qRotate(abduct, sub(mcp, cmc)))
+    : mcp];
   let total = 0;
   for (let i = 0; i < rig.segments[finger].length; i++) {
     total += curls[i] ?? 0;
@@ -350,8 +377,10 @@ export function metacarpalSpacing(rig) {
  *   - `localPosition`, `localQuaternion`: pose relative to the rest parent, so
  *     a renderer can write them straight onto a bone.
  *
- * Bones take the rotation of the joint they start at, so the metacarpal takes
- * abduction and the proximal phalanx takes the MCP curl. The WebXR
+ * Bones take the rotation of the joint they start at, so the proximal phalanx
+ * takes the MCP curl. The four fingers take abduction at the knuckle, so their
+ * metacarpals stay at rest and the palm keeps its width. The thumb takes
+ * abduction at its base joint, and its metacarpal swings with it. The WebXR
  * `generic-hand` skeleton is flat (every joint is a child of the armature), so
  * the local and absolute values coincide there.
  */
@@ -359,10 +388,14 @@ export function poseChain(rig, finger, curls, abduction = 0) {
   const chain = CHAINS[finger];
   const axis = flexionAxis(rig, finger);
   const abduct = qFromAxisAngle(rig.normal, abduction);
+  const knuckle = fansAtKnuckle(finger);
 
   const bones = [];
   let position = rig.worldPos.get(chain[0]).slice();
-  let rotation = abduct;
+  // A knuckle fan keeps the metacarpal at rest, so the fan starts at the next
+  // joint. The thumb fans from its base joint, so its metacarpal carries the
+  // fan.
+  let rotation = knuckle ? IDENTITY : abduct;
 
   for (let i = 0; i < chain.length; i++) {
     const name = chain[i];
@@ -383,6 +416,8 @@ export function poseChain(rig, finger, curls, abduction = 0) {
       const nextName = chain[i + 1];
       const segment = sub(rig.worldPos.get(nextName), rig.worldPos.get(name));
       position = add(position, qRotate(rotation, segment));
+      // The knuckle carries the fan for the four fingers.
+      if (i === 0 && knuckle) rotation = abduct;
       if (i + 1 < chain.length - 1) {
         rotation = qMul(rotation, qFromAxisAngle(axis, curls[i] ?? 0));
       }
@@ -415,10 +450,11 @@ function ternaryMin(fn, lo, hi, iterations = 18) {
  *
  * Playing fingers aim at the lateral position of their key. Idle fingers take
  * a position interpolated from their playing neighbours, so the whole hand
- * fans out together instead of one finger swinging across a static one. A
- * forward and backward pass then keeps the tips in thumb-to-pinky order with a
- * minimum gap, and a relaxation pass pushes apart any shafts that still come
- * too close.
+ * fans out together instead of one finger swinging across a static one. The
+ * fan happens at the knuckle, not across the palm, so the hand opens without
+ * stretching. A forward and backward pass then keeps the tips in
+ * thumb-to-pinky order with a minimum gap, and a relaxation pass pushes apart
+ * any shafts that still come too close.
  *
  * Returns { abduction, lateral } keyed by finger number. Lateral positions are
  * scene units measured from the wrist, positive from thumb towards pinky.

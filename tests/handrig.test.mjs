@@ -117,7 +117,8 @@ test('poseChain reproduces the accumulated rotation and the fingertip', () => {
 
   const axis = flexionAxis(right, 3);
   const abduct = qFromAxisAngle(right.normal, abduction);
-  let rotation = abduct;
+  // The fan starts at the knuckle, so the metacarpal keeps its bind rotation.
+  let rotation = [0, 0, 0, 1];
   let total = 0;
 
   bones.forEach((bone, i) => {
@@ -144,6 +145,59 @@ test('poseChain reproduces the accumulated rotation and the fingertip', () => {
   const calibrated = applyCalibration(right, offset).map((v) => v * SCALE);
   const direct = fingerTip(right, 3, curls, abduction);
   near(Math.hypot(...direct.map((v, i) => v - calibrated[i])), 0, 1e-9, 'tip agrees with fingerTip');
+});
+
+test('a fan turns at the knuckle and leaves the palm its width', () => {
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  const knuckleOf = (finger) => right.worldPos.get(CHAINS[finger][1]);
+  const palmWidth = (abduction) => dist(
+    poseChain(right, 2, REST_CURLS[2], abduction).bones[1].position,
+    poseChain(right, 5, REST_CURLS[5], abduction).bones[1].position,
+  );
+  const width = palmWidth(0);
+
+  for (const finger of [2, 3, 4, 5]) {
+    const lo = poseChain(right, finger, REST_CURLS[finger], -MAX_ABDUCTION);
+    const hi = poseChain(right, finger, REST_CURLS[finger], MAX_ABDUCTION);
+
+    for (const pose of [lo, hi]) {
+      // The metacarpal bone and its head hold the bind pose.
+      assert.ok(qDist(pose.bones[0].world, right.worldQuat.get(CHAINS[finger][0])) < 1e-12,
+        `finger ${finger} metacarpal keeps its bind rotation`);
+      assert.ok(dist(pose.bones[1].position, knuckleOf(finger)) < 1e-12,
+        `finger ${finger} knuckle keeps its bind position`);
+    }
+
+    // The tip still fans: abduction must move the distal end sideways.
+    assert.ok(dist(lo.tip, hi.tip) > 0.01,
+      `finger ${finger} tip fans ${(dist(lo.tip, hi.tip) * 1000).toFixed(0)} mm`);
+  }
+
+  // Palm width across the knuckles does not follow the fan.
+  for (const a of [-MAX_ABDUCTION, MAX_ABDUCTION]) {
+    near(palmWidth(a), width, 1e-12, 'palm width across the knuckles');
+  }
+
+  // The thumb is the exception: its metacarpal swings from the base joint.
+  const thumbLo = poseChain(right, 1, REST_CURLS[1], -MAX_ABDUCTION).bones[1].position;
+  const thumbHi = poseChain(right, 1, REST_CURLS[1], MAX_ABDUCTION).bones[1].position;
+  assert.ok(dist(thumbLo, thumbHi) > 0.01, 'the thumb metacarpal swings with abduction');
+});
+
+test('a posed hand keeps thumb-to-pinky order without crossing', () => {
+  const chord = [
+    { finger: 1, midi: 55 },
+    { finger: 2, midi: 59 },
+    { finger: 3, midi: 62 },
+    { finger: 4, midi: 64 },
+    { finger: 5, midi: 67 },
+  ];
+  const solved = solveContact(left, chord);
+  const lateral = [1, 2, 3, 4, 5].map((finger) => solved.tips.find((_, i) => chord[i].finger === finger)[0]);
+  for (let i = 1; i < lateral.length; i++) {
+    assert.ok(Math.abs(lateral[i] - lateral[i - 1]) >= 0.5,
+      `fingers ${i} and ${i + 1} keep at least half a key between their tips`);
+  }
 });
 
 test('zero curls leave every bone at rest', () => {

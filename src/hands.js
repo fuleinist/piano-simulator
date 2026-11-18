@@ -13,7 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { keyX, keyTopY, isBlack } from './layout.js';
 import { buildChords } from './chords.js';
-import { buildHand, SKIN } from './handprocedural.js';
+import { buildHand, SKIN, FAN_PER_UNIT, MAX_FAN } from './handprocedural.js';
 import {
   SCALE, REST_CURLS, STRIKE_CURLS, TIP_PAD, buildRig, poseChain, solveContact, fingerTip, chooseFingers,
 } from './handrig.js';
@@ -124,10 +124,12 @@ class ProceduralHand {
       const joints = finger.joints;
       const rest = finger.rest;
       if (finger.isThumb) {
-        // Aim the thumb at its key when it plays; tuck it back at rest.
+        // Aim the thumb at its key when it plays; tuck it back at rest. The
+        // base joint stays put, so the thumb swings instead of sliding out of
+        // the palm.
         const thumb = joints[0];
+        thumb.position.x = -1.95 * this.side;
         if (striking) {
-          thumb.position.x = (this.side < 0 ? 2 : -2) * this.spread;
           const base = thumb.getWorldPosition(new THREE.Vector3());
           const target = new THREE.Vector3(keyX(note.midi), keyTopY(note.midi) + 0.12, isBlack(note.midi) ? 0.1 : 1.9);
           const dir = target.sub(base).normalize();
@@ -136,8 +138,8 @@ class ProceduralHand {
           const aim = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
           thumb.quaternion.slerp(aim, Math.min(1, dt * 16));
         } else {
-          thumb.position.x += (-1.95 * this.side - thumb.position.x) * Math.min(1, dt * 8);
-          const restQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.4, this.side * 0.5, this.side * -0.2));
+          const yaw = this.side * (0.5 + (this.spread - 1) * 0.25);
+          const restQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.4, yaw, this.side * -0.2));
           thumb.quaternion.slerp(restQ, Math.min(1, dt * 8));
         }
         const dip = striking ? 0.3 : 0;
@@ -150,9 +152,13 @@ class ProceduralHand {
           finger.curl[k] += (target - finger.curl[k]) * Math.min(1, dt * (striking ? 26 : 12));
           joints[k].rotation.x = -finger.curl[k];
         }
-        // Spread the knuckles sideways with the chord span.
+        // Fan the finger at its knuckle. The knuckle keeps its place, so the
+        // palm holds its width while the finger opens away from the others.
         const baseX = { 2: -1.0, 3: 0.0, 4: 1.0, 5: 2.0 }[f];
-        finger.mcp.position.x = baseX * this.spread * this.side;
+        finger.mcp.position.x = baseX * this.side;
+        const fan = THREE.MathUtils.clamp(
+          (baseX - 0.5) * (this.spread - 1) * FAN_PER_UNIT, -MAX_FAN, MAX_FAN);
+        finger.mcp.rotation.y = -fan * this.side;
       }
     }
   }
