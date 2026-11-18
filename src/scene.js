@@ -3,11 +3,14 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BOARD_W } from './layout.js';
 
-// Camera presets. "top" is the default: a steep overhead view of the keyboard.
-// Presets marked `follow` shift along the keys with the hands, so the player
-// stays in frame at either end of the keyboard.
+// Camera presets. "top" is the default: a true 90° overhead view, with the
+// camera directly above its target, so the keys read at their real width and
+// a hand span can be judged by eye. Presets marked `follow` shift along the
+// keys with the hands, so the player stays in frame at either end of the
+// keyboard.
 export const PRESETS = {
-  top: { pos: [0, 46, 17], target: [0, 0, -1] },
+  // pos.x/z equal target.x/z: the view direction is exactly (0, -1, 0).
+  top: { pos: [0, 46, 0], target: [0, 0, 0] },
   perform: { pos: [0, 34, 30], target: [0, 1, -1] },
   front: { pos: [0, 7, 33], target: [0, 1.5, 0], follow: true },
   side: { pos: [36, 15, 20], target: [0, 1, 0], follow: true },
