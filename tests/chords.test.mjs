@@ -73,3 +73,44 @@ test('a chord keeps every field the renderer reads', () => {
   assert.ok(Math.abs(c.strikeZ - 1.0) < 1e-9, 'strikeZ averages white 1.9 and black 0.1');
   assert.equal(c.keyTop, Math.max(keyTopY(60), keyTopY(61)));
 });
+
+test('unsorted notes still group by time', () => {
+  // The input order must not decide the grouping: buildChords sorts first.
+  const notes = [
+    note({ midi: 64, time: 0.04, finger: 3 }),
+    note({ midi: 72, time: 0.3, finger: 5 }),
+    note({ midi: 60, time: 0, finger: 1 }),
+  ];
+  const chords = buildChords(notes, 'R');
+  assert.equal(chords.length, 2, 'the wide gap splits the notes into two chords');
+  assert.equal(chords[0].time, 0, 'chords come back in time order');
+  assert.equal(chords[1].time, 0.3);
+  assert.equal(chords[0].fingers[1].midi, 60, 'both near notes share the first chord');
+  assert.equal(chords[0].fingers[3].midi, 64);
+  assert.deepEqual(Object.keys(chords[1].fingers), ['5']);
+});
+
+test('no notes yields no chords', () => {
+  assert.deepEqual(buildChords([], 'R'), []);
+});
+
+test('one note yields one chord that holds the note', () => {
+  const n = note({ midi: 67, time: 1.2, finger: 2, wristX: 3 });
+  const chords = buildChords([n], 'R');
+  assert.equal(chords.length, 1);
+  assert.equal(chords[0].time, 1.2);
+  assert.equal(chords[0].end, 1.7);
+  assert.equal(chords[0].fingers[2], n, 'the chord carries the note itself');
+});
+
+test('two notes at the same time share one chord', () => {
+  const notes = [
+    note({ midi: 60, time: 0.5, finger: 1 }),
+    note({ midi: 64, time: 0.5, finger: 3 }),
+  ];
+  const chords = buildChords(notes, 'R');
+  assert.equal(chords.length, 1, 'a zero gap stays inside the window');
+  assert.equal(chords[0].time, 0.5);
+  assert.equal(chords[0].fingers[1].midi, 60);
+  assert.equal(chords[0].fingers[3].midi, 64);
+});

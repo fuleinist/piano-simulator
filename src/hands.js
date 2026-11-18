@@ -42,6 +42,7 @@ function quatFromMatrix(m) {
 
 // --- Chords ---------------------------------------------------------------
 // The grouping lives in src/chords.js so Node tests can import it.
+// Re-export keeps the previous public surface so existing importers do not break.
 export { buildChords } from './chords.js';
 
 // --- Procedural controller (fallback) -------------------------------------
