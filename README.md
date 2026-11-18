@@ -17,7 +17,13 @@ Bar width encodes note weight. Loud melody notes draw wide bars. Soft accompanim
 ### Two rigged hands
 Each hand is a skinned mesh with 25 joints, the WebXR hand skeleton. The mesh comes from the `generic-hand` profile of the WebXR Input Profiles, which is the asset Three.js uses for hand tracking. A rig module poses the bones, and a contact solve places the wrist so the playing fingertips meet their keys.
 
-The hand does not slide its fingers sideways. It rotates each metacarpal to spread the knuckles, and it lifts the wrist when a chord lies beyond the hand's reach. Between notes the fingers hover above the keys. On a strike they curl to the key surface.
+![Both hands on the keys](docs/screenshots/hands.png)
+
+The solve keeps the five fingers in their natural order. It measures each finger from the wrist, not from the world, so a wide chord cannot cross one finger over another. The playing fingers hold their keys, and the resting fingers spread between them. A relaxation pass then separates the finger shafts. It stops before it moves a playing finger off its key.
+
+Each key has its own strike depth. A black key ends about 17 mm before the white strike line, so the solve aims a black-key finger at the black key. Each chord also gets a depth range, because the thumb reaches about 80 mm less far forward than the fingers.
+
+The solve trims the curl of each finger until its tip meets its own key. It rotates each metacarpal to spread the knuckles, and it lifts the wrist when a chord lies beyond the reach of the hand. Between notes the resting fingers straighten and hover above the keys. On a strike they curl to the key surface. When the thumb still misses, the solve turns the palm about its forward axis, which dips the thumb side.
 
 A fingering engine assigns the fingers. It groups notes into chords, splits them between the hands, and searches for a comfortable assignment. A beam search limits the hand span and prefers small shifts. The layout, fingering, and rig modules import no Three.js, so you can test them in Node.
 
@@ -37,12 +43,17 @@ The recorder captures the canvas and the audio to a WebM file. It uses the brows
 
 ## Screenshots
 
+All images show the first piece at about 59 seconds. Both hands play a three-note chord at that moment.
+
 | View | Image |
 |---|---|
 | Top (default) | ![Top view](docs/screenshots/top.png) |
 | Perform | ![Perform view](docs/screenshots/perform.png) |
 | Front | ![Front view](docs/screenshots/front.png) |
+| Side | ![Side view](docs/screenshots/side.png) |
 | Close (hands) | ![Close view](docs/screenshots/close.png) |
+| Hands on the keys | ![Both hands on the keys](docs/screenshots/hands.png) |
+| Hands from a low angle | ![Hands from a low angle](docs/screenshots/hands-side.png) |
 
 ## Stack
 
@@ -53,7 +64,7 @@ The recorder captures the canvas and the audio to a WebM file. It uses the brows
 | [@tonejs/midi](https://github.com/Tonejs/Midi) | 2.0.28 | MIDI parsing |
 | [Vite](https://vite.dev/) | 7 | Dev server and static build |
 
-The renderer uses ACES filmic tone mapping and soft shadows. The hand material uses `MeshPhysicalMaterial` with sheen to approximate skin. The build output is about 279 kB gzipped.
+The renderer uses ACES filmic tone mapping and soft shadows. The hand material uses `MeshPhysicalMaterial` with sheen to approximate skin. The build output is about 299 kB gzipped.
 
 ## Quick start
 
@@ -101,6 +112,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/piano.js` | The keyboard, the keys, and the press animation. |
 | `src/bars.js` | The depth-travelling note bars. |
 | `src/hands.js` | The hand models and the motion controller. |
+| `src/handprocedural.js` | The primitive fallback hands, built from capsules and boxes. |
 | `src/handrig.js` | Rig math: bind-pose calibration, finger pose, and key contact. No Three.js import. |
 | `src/player.js` | MIDI parsing, the Tone.js sampler, and the transport. |
 | `src/recorder.js` | Canvas and audio capture to WebM. |
@@ -131,6 +143,8 @@ npm run fixtures
 ## Limitations
 
 - A few orchestral-reduction MIDIs contain chords wider than two hands can span. The engine stretches the hands to reach them. These chords look extended.
-- The rig cannot reach every chord with one curl set. A few wide chords land up to 56 mm from their keys, and the contact solve reports that gap rather than bending the hand further.
+- The rig cannot reach every chord with one curl set. A few wide chords land up to 28 mm from their keys, and the contact solve reports that gap rather than bending the hand further.
+- The rig hand spans about 158 mm, against about 193 mm for an adult hand. Eleven right-hand notes on tenth stretches therefore miss their keys by more than 10 mm.
+- The resting thumb dips up to 7 mm below the key top on some pinky-only chords. The wrist cannot rise further without lifting the playing pinky off its key.
 - Skin is a single material with no texture maps. The mesh carries no nails, pores, or creases.
 - Recording uses the browser MediaRecorder API. Output is WebM. Some browsers may record video only if the audio tap is unavailable.
