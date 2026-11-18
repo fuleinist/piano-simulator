@@ -208,15 +208,12 @@ test('a pose built from the solve lands on the solved tips', () => {
     { finger: 2, midi: 64 },
     { finger: 3, midi: 67 },
   ];
-  const curlsFor = (finger) => REST_CURLS[finger].map((v) => v + 0.08);
-  const solved = solveContact(
-    right,
-    chord.map((n) => ({ ...n, curls: curlsFor(n.finger) })),
-  );
+  const solved = solveContact(right, chord);
   const wristModel = right.worldPos.get('wrist');
 
   chord.forEach((note, i) => {
-    const { tip } = poseChain(right, note.finger, curlsFor(note.finger), solved.abductions[i]);
+    // The solve trims each finger's curl, so pose from the curls it returns.
+    const { tip } = poseChain(right, note.finger, solved.curls[note.finger], solved.abductions[i]);
     const offset = applyCalibration(right, [
       tip[0] - wristModel[0],
       tip[1] - wristModel[1],

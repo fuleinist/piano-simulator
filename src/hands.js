@@ -13,22 +13,20 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { keyX, keyTopY, isBlack } from './layout.js';
 import { buildHand, SKIN } from './handprocedural.js';
-import { SCALE, REST_CURLS, buildRig, poseChain, solveContact } from './handrig.js';
+import {
+  SCALE, REST_CURLS, STRIKE_CURLS, TIP_PAD, buildRig, poseChain, solveContact, fingerTip, chooseFingers,
+} from './handrig.js';
+
+// Scene forward, the axis a palm rolls about.
+const FORWARD_AXIS = new THREE.Vector3(0, 0, 1);
 
 const params = new URLSearchParams(window.location.search);
 const flag = params.get('hands') || 'rigged';
 const USE_PROCEDURAL = flag === 'procedural';
 const SHOW_SKELETON = flag === 'debug';
 
-// How far each joint curls past its rest angle when a finger strikes, in
-// radians: MCP, PIP, DIP. A thumb has two joints.
-const STRIKE_CURL = {
-  1: [0.25, 0.30],
-  2: [0.08, 0.12, 0.10],
-  3: [0.08, 0.12, 0.10],
-  4: [0.08, 0.12, 0.10],
-  5: [0.07, 0.10, 0.09],
-};
+// Strike curls live in handrig so the solver and the pose share one source.
+const STRIKE_CURL = STRIKE_CURLS;
 
 // Quaternion from a row-major 3x3 rotation matrix.
 function quatFromMatrix(m) {
@@ -233,6 +231,8 @@ class RiggedHand {
       .fromArray(this.rig.worldPos.get('wrist'))
       .multiplyScalar(SCALE);
     this.tilt = new THREE.Quaternion();
+    this.rollQuat = new THREE.Quaternion();
+    this.roll = 0;
 
     this.curls = {};
     for (const finger of [1, 2, 3, 4, 5]) this.curls[finger] = REST_CURLS[finger].slice();
@@ -251,6 +251,17 @@ class RiggedHand {
 
     // Solve each chord once: wrist position plus per-finger abduction.
     for (const c of this.chords) {
+      // The beam search picks fingers by a generic hand model. Where this rig
+      // cannot span the keys with that choice, spread the notes over a wider
+      // finger set instead of leaving the thumb short of its key.
+      const ordered = Object.values(c.fingers).sort((a, b) => a.midi - b.midi);
+      const midis = ordered.map((n) => n.midi);
+      const chosen = chooseFingers(this.rig, midis, hand, ordered.map((n) => n.finger));
+      if (chosen.some((f, i) => f !== ordered[i].finger)) {
+        c.fingers = {};
+        ordered.forEach((n, i) => { n.finger = chosen[i]; c.fingers[chosen[i]] = n; });
+      }
+
       // Solve at the strike pose, so a pressed finger meets the key surface and
       // the relaxed pose rests just above it.
       const entries = Object.entries(c.fingers).map(([finger, note]) => ({
@@ -262,13 +273,17 @@ class RiggedHand {
       c.entries = entries;
       c.solve = solve;
 
-      // A finger that cannot reach its key would otherwise push through the
-      // surface, so lift the wrist until the lowest strike tip clears it.
-      const lowest = Math.min(...solve.tips.map((tip) => tip[1]));
+      // Each tip clears its OWN key, not the highest key of the chord: a
+      // thumb on a white key must not be lifted to the height of a black one.
       const base = Math.max(solve.wrist[1], c.keyTop + 1.6);
-      const lift = lowest < c.keyTop + 0.02 ? c.keyTop + 0.02 - lowest : 0;
+      const lift = Math.max(0, ...solve.tips.map((tip, i) =>
+        keyTopY(entries[i].midi) + 0.02 - tip[1]));
       c.lift = lift + (base - solve.wrist[1]);
       c.wrist = new THREE.Vector3(solve.wrist[0], base + lift, solve.wrist[2]);
+      // The strike pose the solve settled on, so the rendered curl matches it.
+      c.strikeCurls = solve.curls;
+      // Resting fingers straighten to hover above the keys beneath them.
+      c.idleCurls = solve.idleCurls;
     }
 
     if (this.chords.length) {
@@ -284,6 +299,7 @@ class RiggedHand {
     if (!c) return;
     this.pos.copy(c.wrist);
     this.vel.set(0, 0, 0);
+    this.roll = c.solve.roll || 0;
     for (const finger of [1, 2, 3, 4, 5]) this.curls[finger] = REST_CURLS[finger].slice();
     this._pose(c);
     this._place();
@@ -301,7 +317,9 @@ class RiggedHand {
     // Anticipatory lift on a long shift.
     const travel = next ? Math.abs(next.wrist.x - c.wrist.x) : 0;
     const lift = active ? 0 : Math.min(1.0, travel * 0.1);
-    const target = new THREE.Vector3(c.wrist.x, c.wrist.y + lift + (active ? -0.12 : 0.1), c.wrist.z);
+    // The press dip matches the fingertip pad, so a struck tip meets the key
+    // surface instead of punching through it.
+    const target = new THREE.Vector3(c.wrist.x, c.wrist.y + lift + (active ? -TIP_PAD : 0.1), c.wrist.z);
 
     const w = 14;
     const acc = new THREE.Vector3(
@@ -312,11 +330,17 @@ class RiggedHand {
     this.vel.addScaledVector(acc, dt);
     this.pos.addScaledVector(this.vel, dt);
 
-    // Roll into the travel direction, the way a forearm leads a shift.
+    // Pronation follows the chord: the palm turns so the thumb meets its key.
+    this.roll += ((c.solve.roll || 0) - this.roll) * Math.min(1, dt * 10);
+
+    // Expressive tilt belongs to the travel, not the strike. A pitch while the
+    // fingers are down would lift the tips off the keys the solve just placed
+    // them on, so it stays off during contact.
+    const travelling = active ? 0 : 1;
     this.tilt.setFromEuler(new THREE.Euler(
-      active ? 0.06 : 0,
-      THREE.MathUtils.clamp(this.vel.x * 0.015, -0.15, 0.15) * this.side,
-      THREE.MathUtils.clamp(-this.vel.x * 0.02, -0.18, 0.18) * this.side,
+      0,
+      THREE.MathUtils.clamp(this.vel.x * 0.015, -0.15, 0.15) * this.side * travelling,
+      THREE.MathUtils.clamp(-this.vel.x * 0.02, -0.18, 0.18) * this.side * travelling,
     ));
 
     this._curl(t, dt, c, active);
@@ -328,18 +352,19 @@ class RiggedHand {
     for (const finger of [1, 2, 3, 4, 5]) {
       const note = c.fingers[finger];
       const striking = active && note && t >= note.time - 0.03;
-      const rest = REST_CURLS[finger];
-      const bump = striking ? STRIKE_CURL[finger] : null;
+      const rest = (c.idleCurls && c.idleCurls[finger]) || REST_CURLS[finger];
+      const solved = c.strikeCurls && c.strikeCurls[finger];
+      const target = striking ? (solved || rest.map((v, i) => v + STRIKE_CURL[finger][i])) : rest;
       const rate = Math.min(1, dt * (striking ? 26 : 12));
-      this.curls[finger] = this.curls[finger].map((v, i) =>
-        v + (rest[i] + (bump ? bump[i] : 0) - v) * rate);
+      this.curls[finger] = this.curls[finger].map((v, i) => v + (target[i] - v) * rate);
     }
   }
 
   _pose(c) {
     for (const finger of [1, 2, 3, 4, 5]) {
-      const index = c.entries.findIndex((e) => e.finger === finger);
-      const abduction = index >= 0 ? c.solve.abductions[index] : 0;
+      // Every finger takes its place from the ordered solve, so idle fingers
+      // fan out with the playing ones instead of staying put and colliding.
+      const abduction = c.solve.spread ? c.solve.spread[finger] : 0;
       this.abduction[finger] = abduction;
       for (const bone of poseChain(this.rig, finger, this.curls[finger], abduction).bones) {
         const target = this.bones[bone.name];
@@ -351,7 +376,11 @@ class RiggedHand {
   }
 
   _place() {
-    const q = this.root.quaternion.copy(this.calibration).multiply(this.tilt);
+    // Pronation turns the palm about the forward axis, in scene space, so the
+    // thumb side dips onto its key. The wrist stays the pivot.
+    const roll = this.roll || 0;
+    this.rollQuat.setFromAxisAngle(FORWARD_AXIS, roll * this.rig.rollSign);
+    const q = this.root.quaternion.copy(this.rollQuat).multiply(this.calibration).multiply(this.tilt);
     const offset = this.wristModel.clone().applyQuaternion(q);
     this.root.position.copy(this.pos).sub(offset);
     if (this.helper) this.root.updateMatrixWorld(true);
