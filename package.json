@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/handrig.test.mjs tests/keylight.test.mjs tests/chords.test.mjs tests/frames.test.mjs tests/fingering.test.mjs && node tests/smoke.mjs",
+    "test": "node --test tests/handrig.test.mjs tests/keylight.test.mjs tests/chords.test.mjs tests/frames.test.mjs tests/fingering.test.mjs tests/pedals.test.mjs && node tests/smoke.mjs",
     "fixtures": "node tools/extract-rig-fixture.mjs"
   },
   "dependencies": {

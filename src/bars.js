@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { keyX, keyWidth, KEY_BACK_Z, BOARD_W } from './layout.js';
+import { keyX, keyWidth, KEY_BACK_Z, BOARD_W, X_MIN } from './layout.js';
+import { PEDAL_ORDER, PEDAL_COLOR, spanOnLane } from './pedals.js';
 
 // Bars glide in depth from far behind the piano toward the keys: each note
 // starts on the grand rim well behind the keyboard (-Z) and slides to the
@@ -14,6 +15,17 @@ const RUNWAY = PPS * LOOKAHEAD;
 // Bars vanish just behind the keyboard, before they reach the keys.
 const BAR_END_Z = KEY_BACK_Z - 0.4;
 const FADE_LEN = 1.2; // dim over the last bit of bar length as it drains
+
+// The pedal lane runs beside the keys, outside the left end of the keyboard
+// and clear of the case, so no part of the rail hides inside the cheek. Each
+// pedal that the piece uses gets one rail, and the rail holds the spans where
+// that pedal is down. A span rides in with the note bars, so the pedal reaches
+// the strike line at the moment its press sounds.
+const PEDAL_X0 = X_MIN - 2.2;
+const PEDAL_GAP = 0.62;
+const PEDAL_W = 0.44;
+const PEDAL_THICK = 0.07;
+const PEDAL_Y = 0.98; // above the nameboard, below the bars
 
 const COLORS = {
   L: new THREE.Color(0x2f9dff),
@@ -34,7 +46,12 @@ export class Bars {
   constructor(scene) {
     this.group = new THREE.Group();
     scene.add(this.group);
+    // The pedal lane is its own group, so the Show panel can hide it alone.
+    this.pedalGroup = new THREE.Group();
+    scene.add(this.pedalGroup);
     this.mesh = null;
+    this.pedalMesh = null;
+    this.pedalSpans = [];
     this.data = [];
     this.velMin = 0; this.velMax = 1;
     this._dummy = new THREE.Object3D();
@@ -52,7 +69,12 @@ export class Bars {
     this.group.add(strip);
   }
 
-  load(notes) {
+  /**
+   * Draw the note bars, and one rail for each pedal that the piece uses.
+   * A pedal with no spans gets no rail, so a piece that carries no pedal
+   * events looks exactly as it did before.
+   */
+  load(notes, pedals = {}) {
     if (this.mesh) { this.group.remove(this.mesh); this.mesh.dispose(); }
     this.data = notes.map((n) => {
       return {
@@ -77,10 +99,55 @@ export class Bars {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.group.add(this.mesh);
+
+    this._loadPedals(pedals);
+  }
+
+  // One rail per pedal that the piece uses, in reading order from the keys
+  // outward: damper, then sostenuto, then soft.
+  _loadPedals(pedals) {
+    this.pedalGroup.clear();
+    this.pedalSpans = [];
+    this.pedalMesh = null;
+
+    let lane = 0;
+    for (const name of PEDAL_ORDER) {
+      const spans = pedals[name] || [];
+      if (!spans.length) continue;
+      const x = PEDAL_X0 - lane * PEDAL_GAP;
+      this._pedalRail(x, PEDAL_COLOR[name]);
+      for (const span of spans) this.pedalSpans.push({ name, x, span });
+      lane++;
+    }
+    if (!this.pedalSpans.length) return;
+
+    const geo = new RoundedBoxGeometry(1, 1, 1, 2, 0.06);
+    const mat = new THREE.MeshBasicMaterial({ toneMapped: false });
+    this.pedalMesh = new THREE.InstancedMesh(geo, mat, this.pedalSpans.length);
+    this.pedalMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.pedalMesh.frustumCulled = false;
+    this.pedalGroup.add(this.pedalMesh);
+  }
+
+  // The fixed track a pedal rides in, drawn dim so an empty lane still reads.
+  _pedalRail(x, color) {
+    const rail = new THREE.Mesh(
+      new THREE.PlaneGeometry(PEDAL_W * 2.4, RUNWAY),
+      new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.1, toneMapped: false, depthWrite: false,
+      })
+    );
+    rail.rotation.x = -Math.PI / 2;
+    rail.position.set(x, PEDAL_Y - 0.04, BAR_END_Z - RUNWAY / 2);
+    this.pedalGroup.add(rail);
   }
 
   update(t) {
-    if (!this.mesh) return;
+    if (this.mesh) this._updateBars(t);
+    if (this.pedalMesh) this._updatePedals(t);
+  }
+
+  _updateBars(t) {
     const d = this._dummy;
     let idx = 0;
     for (const n of this.data) {
@@ -110,5 +177,28 @@ export class Bars {
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 
+  _updatePedals(t) {
+    const d = this._dummy;
+    let idx = 0;
+    for (const p of this.pedalSpans) {
+      const seg = spanOnLane(p.span, t, { pps: PPS, endZ: BAR_END_Z, runway: RUNWAY });
+      if (!seg) continue;
+      d.position.set(p.x, PEDAL_Y, (seg.near + seg.far) / 2);
+      d.scale.set(PEDAL_W, PEDAL_THICK, seg.length);
+      d.rotation.set(0, 0, 0);
+      d.updateMatrix();
+      this.pedalMesh.setMatrixAt(idx, d.matrix);
+      const fade = THREE.MathUtils.clamp(seg.length / FADE_LEN, 0, 1);
+      this._color.setHex(PEDAL_COLOR[p.name]).multiplyScalar(0.45 + 0.55 * fade);
+      this.pedalMesh.setColorAt(idx, this._color);
+      idx++;
+    }
+    this.pedalMesh.count = idx;
+    this.pedalMesh.instanceMatrix.needsUpdate = true;
+    if (this.pedalMesh.instanceColor) this.pedalMesh.instanceColor.needsUpdate = true;
+  }
+
   setVisible(v) { this.group.visible = v; }
+
+  setPedalsVisible(v) { this.pedalGroup.visible = v; }
 }
