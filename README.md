@@ -29,7 +29,7 @@ A span rides in with the note bars, so a pedal press reaches the strike line at 
 
 The player lifts every pedal at the end of a piece, so the last chord rings out and then stops. A piece with no pedal events shows no lane and no readout.
 
-Eleven of the 15 built-in pieces carry the damper pedal. None of them carries the sostenuto or the soft pedal, so load a MIDI file to see those two lanes. The soft pedal changes the level only. A sampler cannot move its hammers, so the tone does not darken.
+Fourteen of the 18 built-in pieces carry the damper pedal. Three of them also carry the soft pedal, and the Nutcracker Andante carries all three pedals. The other four pieces carry no pedal event at all. The soft pedal changes the level only. A sampler cannot move its hammers, so the tone does not darken.
 
 ### Two rigged hands
 Each hand is a skinned mesh with 25 joints, the WebXR hand skeleton. The mesh comes from the `generic-hand` profile of the WebXR Input Profiles, which is the asset Three.js uses for hand tracking. A rig module poses the bones, and a contact solve places the wrist so the playing fingertips meet their keys.
@@ -49,7 +49,7 @@ A fingering engine assigns the fingers. It groups notes into chords, splits them
 The original primitive hands remain as a fallback. Add `?hands=procedural` to the URL to use them, or `?hands=debug` to draw the skeletons.
 
 ### Selectable music
-The menu lists 15 famous pieces. You can also load any standard MIDI file from your disk. The player parses the file, splits the notes between the hands, and marks the melody.
+The menu lists 18 famous pieces. You can also load any standard MIDI file from your disk. The player parses the file, splits the notes between the hands, and marks the melody.
 
 ### Sampled audio
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
@@ -118,7 +118,7 @@ npm run preview
 
 | Control | Action |
 |---|---|
-| Piece menu | Select one of 15 built-in pieces. |
+| Piece menu | Select one of 18 built-in pieces. |
 | Load MIDI | Open any standard MIDI file from your disk. |
 | Play / Pause | Start or stop the performance. |
 | Seek slider | Move to any point in the piece. |
@@ -162,7 +162,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-`npm test` runs six unit suites and the smoke test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 15 MIDIs, and runs the fingering engine on all 15 MIDIs. It asserts that no hand span exceeds 19 semitones. All 15 pieces pass.
+`npm test` runs six unit suites and the smoke test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
 
 Regenerate the rig fixtures after changing an asset:
 
@@ -173,6 +173,7 @@ npm run fixtures
 ## Assets and sources
 
 - MIDI files: `public/midi/`, from the `zz85/midiviz` repository (gh-pages branch).
+- Three files exercise every pedal lane: `bach_wtc1_04.mid`, `bach_wtc2_06.mid`, and `tchai_nutcracker.mid`. They came from the same archive, which holds live competition recordings with damper, sostenuto, and soft pedal events.
 - Piano samples: `public/samples/piano/`, the Salamander grand piano set from tonejs.github.io.
 - Hand meshes: `public/hands/`, the `generic-hand` profile of the WebXR Input Profiles, MIT licence, copyright 2019 Amazon. See `docs/hands-assets.md`.
 - The pieces are public-domain compositions. The MIDI renditions and samples belong to their respective authors.
