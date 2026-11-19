@@ -17,6 +17,7 @@ import { buildHand, SKIN, FAN_PER_UNIT, MAX_FAN } from './handprocedural.js';
 import {
   SCALE, REST_CURLS, STRIKE_CURLS, TIP_PAD, buildRig, poseChain, solveContact, fingerTip, chooseFingers,
 } from './handrig.js';
+import { travelLead, easeInOut, blendPose } from './motion.js';
 
 // Scene forward, the axis a palm rolls about.
 const FORWARD_AXIS = new THREE.Vector3(0, 0, 1);
@@ -273,31 +274,66 @@ class RiggedHand {
     }
   }
 
+  // How long, in song time, the hand takes to move to chord `i`. The window
+  // ends at the chord's own time, so the fingers arrive as the note sounds,
+  // and it is sized to the distance the wrist actually travels.
+  _lead(i) {
+    const c = this.chords[i];
+    const prev = i > 0 ? this.chords[i - 1] : null;
+    if (!c || !prev) return 0;
+    return travelLead(c.wrist.distanceTo(prev.wrist), c.time - prev.time);
+  }
+
+  // Pick the chord the hand is playing or moving to. A chord becomes current
+  // only when its own travel window opens, so the previous pose holds until
+  // the movement can start.
+  _advance(t) {
+    while (this.idx + 1 < this.chords.length
+      && this.chords[this.idx + 1].time - t <= this._lead(this.idx + 1)) this.idx++;
+  }
+
+  // Where the pose is along the travel: the chord it left, the chord it is
+  // reaching for, and how far it has got. A seek and a playthrough both sample
+  // this, so the hand looks the same whether the clock ran or jumped.
+  _transition(t) {
+    const to = this.chords[this.idx];
+    const from = this.idx > 0 ? this.chords[this.idx - 1] : null;
+    if (!from) return { from: to, to, s: 1 };
+    const lead = this._lead(this.idx);
+    const s = lead > 0 ? Math.min(1, Math.max(0, (t - (to.time - lead)) / lead)) : 1;
+    return { from, to, s };
+  }
+
   seek(t) {
     this.idx = 0;
-    while (this.idx + 1 < this.chords.length && this.chords[this.idx + 1].time <= t + 0.12) this.idx++;
+    this._advance(t);
     const c = this.chords[this.idx];
     if (!c) return;
-    this.pos.copy(c.wrist);
+    const tr = this._transition(t);
+    // Land on the path the frame loop would have driven, so a seek into the
+    // middle of a shift shows a hand in transit rather than one that jumped.
+    this.pos.lerpVectors(tr.from.wrist, tr.to.wrist, easeInOut(tr.s));
     this.vel.set(0, 0, 0);
-    this.roll = c.solve.roll || 0;
     for (const finger of [1, 2, 3, 4, 5]) this.curls[finger] = REST_CURLS[finger].slice();
-    this._pose(c);
+    this._pose(tr);
     this._place();
   }
 
   update(t, dt) {
-    while (this.idx + 1 < this.chords.length && this.chords[this.idx + 1].time <= t + 0.12) this.idx++;
+    this._advance(t);
     const c = this.chords[this.idx];
     if (!c) { this.root.visible = false; return; }
     this.root.visible = this.visible;
 
+    const tr = this._transition(t);
     const active = t >= c.time - 0.04 && t <= c.end + 0.1;
-    const next = this.chords[this.idx + 1];
 
-    // Anticipatory lift on a long shift.
-    const travel = next ? Math.abs(next.wrist.x - c.wrist.x) : 0;
-    const lift = active ? 0 : Math.min(1.0, travel * 0.1);
+    // The wrist arcs over the keys while the pose travels, and settles as the
+    // fingers land: sin(pi s) is zero at both ends of the window, so the strike
+    // still meets the key. The arc grows with the distance travelled, because a
+    // leap lifts the whole hand and a neighbouring key does not.
+    const travelled = c.wrist.distanceTo(tr.from.wrist);
+    const lift = Math.sin(Math.PI * tr.s) * Math.min(1.0, travelled * 0.18);
     // The press dip matches the fingertip pad, so a struck tip meets the key
     // surface instead of punching through it.
     const target = new THREE.Vector3(c.wrist.x, c.wrist.y + lift + (active ? -TIP_PAD : 0.1), c.wrist.z);
@@ -311,8 +347,8 @@ class RiggedHand {
     this.vel.addScaledVector(acc, dt);
     this.pos.addScaledVector(this.vel, dt);
 
-    // Pronation follows the chord: the palm turns so the thumb meets its key.
-    this.roll += ((c.solve.roll || 0) - this.roll) * Math.min(1, dt * 10);
+    // Pronation belongs to the pose: the palm turns as the hand travels and is
+    // at its solved angle when the fingers land.
 
     // Expressive tilt belongs to the travel, not the strike. A pitch while the
     // fingers are down would lift the tips off the keys the solve just placed
@@ -325,7 +361,7 @@ class RiggedHand {
     ));
 
     this._curl(t, dt, c, active);
-    this._pose(c);
+    this._pose(tr);
     this._place();
   }
 
@@ -341,11 +377,24 @@ class RiggedHand {
     }
   }
 
-  _pose(c) {
+  _pose(tr) {
+    const eased = easeInOut(tr.s);
+    // The spread and the palm roll travel with the hand. The press stays with
+    // the note: `_curl` animates each strike off its own onset, so a finger
+    // whose note starts a little after the chord holds its relaxed pose.
+    const pose = blendPose(
+      { abduction: tr.from.solve.spread },
+      { abduction: tr.to.solve.spread },
+      eased,
+    );
+    const rollFrom = tr.from.solve.roll || 0;
+    const rollTo = tr.to.solve.roll || 0;
+    this.roll = rollFrom + (rollTo - rollFrom) * eased;
+
     for (const finger of [1, 2, 3, 4, 5]) {
       // Every finger takes its place from the ordered solve, so idle fingers
       // fan out with the playing ones instead of staying put and colliding.
-      const abduction = c.solve.spread ? c.solve.spread[finger] : 0;
+      const abduction = pose.abduction[finger];
       this.abduction[finger] = abduction;
       for (const bone of poseChain(this.rig, finger, this.curls[finger], abduction).bones) {
         const target = this.bones[bone.name];
