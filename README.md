@@ -16,6 +16,21 @@ Each note draws a bar that travels in depth. The bar starts on the grand rim far
 
 Bar width encodes note weight. Loud melody notes draw wide bars. Soft accompaniment notes draw thin bars. Width ranges from about 0.29 to 0.56 key units. Bar color encodes the hand. Blue bars belong to the left hand. Orange bars belong to the right hand.
 
+### Piano pedals
+A MIDI file can carry the piano pedals as control changes. CC64 is the damper pedal, CC66 the sostenuto pedal, and CC67 the soft pedal. The player reads these events, and the sheet draws each pedal that the file uses in its own lane beside the left end of the keyboard.
+
+| Pedal | CC | Color | Effect |
+|---|---|---|---|
+| Damper (sustain) | 64 | Teal | A tone rings after its key lifts, until the pedal lifts. |
+| Sostenuto | 66 | Violet | The pedal holds the tones that sound as it goes down. |
+| Soft (una corda) | 67 | Amber | New tones start at 60% of their velocity. |
+
+A span rides in with the note bars, so a pedal press reaches the strike line at the moment it sounds. A lane is empty until its pedal goes down. The transport shows the pedals that are down, for example `Pedal: damper`.
+
+The player lifts every pedal at the end of a piece, so the last chord rings out and then stops. A piece with no pedal events shows no lane and no readout.
+
+Eleven of the 15 built-in pieces carry the damper pedal. None of them carries the sostenuto or the soft pedal, so load a MIDI file to see those two lanes. The soft pedal changes the level only. A sampler cannot move its hammers, so the tone does not darken.
+
 ### Two rigged hands
 Each hand is a skinned mesh with 25 joints, the WebXR hand skeleton. The mesh comes from the `generic-hand` profile of the WebXR Input Profiles, which is the asset Three.js uses for hand tracking. A rig module poses the bones, and a contact solve places the wrist so the playing fingertips meet their keys.
 
@@ -109,6 +124,7 @@ npm run preview
 | Seek slider | Move to any point in the piece. |
 | Speed slider | Set the tempo from 0.25x to 2x. |
 | Loop | Repeat the piece when it ends. |
+| Pedal lane | Show or hide the pedal lanes. Press P to toggle them. |
 | View buttons | Switch between top, perform, front, side, and close views. |
 | Mouse drag | Rotate the camera. |
 | Mouse wheel | Zoom in and out. |
@@ -128,7 +144,8 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/fingering.js` | Hand split, chord grouping, and finger assignment. No Three.js import. |
 | `src/scene.js` | Renderer, lights, camera presets, and OrbitControls. |
 | `src/piano.js` | The keyboard, the keys, and the press animation. |
-| `src/bars.js` | The depth-travelling note bars. |
+| `src/bars.js` | The depth-travelling note bars and the pedal lanes. |
+| `src/pedals.js` | Pedal parsing, the hold state, and the lane geometry. No Three.js import. |
 | `src/hands.js` | The hand models and the motion controller. |
 | `src/handprocedural.js` | The primitive fallback hands, built from capsules and boxes. |
 | `src/handrig.js` | Rig math: bind-pose calibration, finger pose, and key contact. No Three.js import. |
@@ -145,7 +162,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-`npm test` runs five unit suites and the smoke test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The smoke test checks the key layout and runs the fingering engine on all 15 MIDIs. It asserts that no hand span exceeds 19 semitones. All 15 pieces pass.
+`npm test` runs six unit suites and the smoke test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 15 MIDIs, and runs the fingering engine on all 15 MIDIs. It asserts that no hand span exceeds 19 semitones. All 15 pieces pass.
 
 Regenerate the rig fixtures after changing an asset:
 

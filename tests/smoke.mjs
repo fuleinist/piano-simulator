@@ -7,6 +7,7 @@ const { Midi } = MidiPkg;
 import { assignFingering, markMelody, CHORD_WINDOW } from '../src/fingering.js';
 import { keyX, isBlack, noteName, midiFromName, MIDI_MIN, MIDI_MAX, WHITE_COUNT } from '../src/layout.js';
 import { PRESETS } from '../src/scene.js';
+import { collectPedals, pedalSpans, PEDAL_ORDER } from '../src/pedals.js';
 
 const dir = path.resolve('public/midi');
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.mid'));
@@ -74,12 +75,30 @@ for (const f of files) {
   if (badFinger) fail(`${f}: ${badFinger} invalid fingers`);
   if (badWrist) fail(`${f}: ${badWrist} non-finite wristX`);
   if (bigSpan) fail(`${f}: ${bigSpan} chords span > 19 semitones`);
+
+  // Pedal check. A piece may carry no pedal events at all, and that is not a
+  // fault: the lane simply stays empty. A span that the lane draws must start
+  // before it ends and must lie inside the piece.
+  const endTime = Math.max(midi.duration, ...notes.map((n) => n.time + n.duration));
+  const spans = pedalSpans(collectPedals(midi.tracks), endTime);
+  let badPedal = 0;
+  const used = [];
+  for (const name of PEDAL_ORDER) {
+    for (const [start, end] of spans[name]) {
+      if (!(end > start)) badPedal++;
+      if (start < -0.01 || end > endTime + 0.01) badPedal++;
+    }
+    if (spans[name].length) used.push(`${name}=${spans[name].length}`);
+  }
+  if (badPedal) fail(`${f}: ${badPedal} bad pedal spans`);
+
   const melody = assigned.filter((n) => n.melody).length;
   console.log(
     `${f.padEnd(26)} notes=${String(notes.length).padStart(5)} ` +
     `L=${String(lh).padStart(4)} R=${String(rh).padStart(4)} ` +
-    `melody=${String(melody).padStart(4)} dur=${midi.duration.toFixed(1)}s` +
-    (badFinger || badWrist || bigSpan ? '  [FAIL]' : '  OK')
+    `melody=${String(melody).padStart(4)} dur=${midi.duration.toFixed(1)}s ` +
+    `pedals=${used.join(' ') || 'none'}` +
+    (badFinger || badWrist || bigSpan || badPedal ? '  [FAIL]' : '  OK')
   );
 }
 

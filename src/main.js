@@ -33,12 +33,16 @@ for (const s of SONGS) {
   sel.appendChild(o);
 }
 
+// The pedals that the piece carries, for the song label. A piece with no
+// pedal events adds nothing.
+const pedalNote = (pedals) => (pedals && pedals.length ? ` · pedal: ${pedals.join(', ')}` : '');
+
 async function loadSong(song) {
   $('loaderText').textContent = `Loading ${song.title}…`;
   $('loader').classList.remove('hide');
   try {
     const info = await player.loadSong(song);
-    $('songLabel').textContent = `${info.title} · ${info.notes} notes`;
+    $('songLabel').textContent = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)}`;
   } catch (e) {
     $('songLabel').textContent = 'Failed to load: ' + e.message;
   }
@@ -54,7 +58,7 @@ $('fileInput').addEventListener('change', async (e) => {
   $('loader').classList.remove('hide');
   try {
     const info = await player.loadFile(f);
-    $('songLabel').textContent = `${info.title} · ${info.notes} notes`;
+    $('songLabel').textContent = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)}`;
     sel.value = '';
   } catch (err) {
     $('songLabel').textContent = 'Invalid MIDI: ' + err.message;
@@ -70,6 +74,7 @@ function maybeHideLoader() {
 // --- Transport -----------------------------------------------------------
 const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 let seeking = false;
+let lastPedalText = '';
 
 player.onState = (p) => {
   $('playBtn').textContent = p.playing ? '❚❚' : '▶';
@@ -88,6 +93,7 @@ $('loopToggle').addEventListener('change', (e) => { player.loop = e.target.check
 $('volume').addEventListener('input', (e) => { player.gain.gain.value = parseFloat(e.target.value); });
 $('handsToggle').addEventListener('change', (e) => hands.setVisible(e.target.checked));
 $('barsToggle').addEventListener('change', (e) => bars.setVisible(e.target.checked));
+$('pedalsToggle').addEventListener('change', (e) => bars.setPedalsVisible(e.target.checked));
 
 // --- View ----------------------------------------------------------------
 document.querySelectorAll('[data-view]').forEach((b) => {
@@ -140,6 +146,7 @@ window.addEventListener('keydown', (e) => {
     case 'Equal': case 'NumpadAdd': scene.zoomBy(0.8); break;
     case 'Minus': case 'NumpadSubtract': scene.zoomBy(1.25); break;
     case 'KeyL': $('loopToggle').checked = player.loop = !player.loop; break;
+    case 'KeyP': $('pedalsToggle').checked = !$('pedalsToggle').checked; bars.setPedalsVisible($('pedalsToggle').checked); break;
     case 'KeyR': preview.clear(); recorder.toggle(); break;
     case 'Digit1': scene.setPreset('top'); break;
     case 'Digit2': scene.setPreset('perform'); break;
@@ -165,6 +172,14 @@ function frame() {
     $('seek').value = Math.round((player.time / player.duration) * 1000);
   }
   $('timeLabel').textContent = `${fmt(player.time)} / ${fmt(player.duration)}`;
+  // Show the pedals that are down. The text changes only on a pedal event, so
+  // the frame loop does not write the DOM on every frame.
+  const down = player.pedalState.active();
+  const pedalText = down.length ? `Pedal: ${down.join(' + ')}` : '';
+  if (pedalText !== lastPedalText) {
+    $('pedalLabel').textContent = pedalText;
+    lastPedalText = pedalText;
+  }
   requestAnimationFrame(frame);
 }
 

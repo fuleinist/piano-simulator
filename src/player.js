@@ -2,6 +2,7 @@ import * as Tone from 'tone';
 import * as MidiNS from '@tonejs/midi';
 import { assignFingering, markMelody } from './fingering.js';
 import { noteName, MIDI_MIN, MIDI_MAX } from './layout.js';
+import { collectPedals, pedalSpans, PedalState, PEDAL_ORDER } from './pedals.js';
 
 const Midi = MidiNS.Midi || (MidiNS.default && MidiNS.default.Midi) || MidiNS.default;
 
@@ -25,7 +26,12 @@ export class Player {
     this.playing = false;
     this.loop = false;
     this.pointer = 0;
-    this.active = new Map(); // midi -> releaseTime
+    this.active = new Map(); // midi -> releaseTime of the key
+    // midi -> releaseTime of the tone. The damper pedal keeps a tone alive
+    // after its key lifts, so the two maps differ while the pedal is down.
+    this.voices = new Map();
+    this.pedalSpans = { damper: [], sostenuto: [], soft: [] };
+    this.pedalState = new PedalState();
     this.ready = false;
     this.onState = null;
     // Fired once when the piece reaches its end. A new load or a seek does not
@@ -63,12 +69,16 @@ export class Player {
     const assigned = markMelody(assignFingering(raw));
     this.notes = assigned;
     this.duration = Math.max(midi.duration, ...assigned.map((n) => n.time + n.duration), 1);
+    const events = collectPedals(midi.tracks);
+    this.pedalSpans = pedalSpans(events, this.duration);
+    this.pedalState = new PedalState(events);
+    this.pedalsUsed = PEDAL_ORDER.filter((name) => this.pedalSpans[name].length);
     this.title = title;
-    this.bars.load(assigned);
+    this.bars.load(assigned, this.pedalSpans);
     this.hands.load(assigned);
     this.seek(0);
     this._emit();
-    return { notes: assigned.length, duration: this.duration, title };
+    return { notes: assigned.length, duration: this.duration, title, pedals: this.pedalsUsed };
   }
 
   async loadFile(file) {
@@ -110,19 +120,48 @@ export class Player {
         else {
           this.time = this.duration;
           this.playing = false;
-          this._releaseAll();
+          // A player lifts the pedal at the end. The tones then release on
+          // their own tail instead of ringing until the next seek.
+          this.pedalState.liftAll();
+          this._releaseKeys();
           this._emit();
           if (this.onEnd) this.onEnd();
         }
       }
+      // Apply this step's pedal events before the notes start. The soft pedal
+      // must reach a tone that starts in the same step, and the sostenuto
+      // pedal must see the tones that already sound.
+      this.pedalState.advance(this.time, this.voices.keys());
       this._trigger(prev, this.time);
     }
-    // Release keys whose note has ended.
+    // Release keys whose note has ended. The key lifts at the note end even
+    // when a pedal keeps the tone alive, because a damper pedal does not hold
+    // the key down.
     for (const [midi, rel] of this.active) {
       if (this.time >= rel) { this.piano.release(midi); this.active.delete(midi); }
     }
+    this._releaseDue();
     this.bars.update(this.time);
     this.hands.update(this.time, dt);
+  }
+
+  // Release the tones whose note has ended and that no pedal holds.
+  _releaseDue() {
+    for (const [midi, rel] of this.voices) {
+      if (this.time < rel) continue;
+      if (this.pedalState.holds(midi)) continue;
+      this._releaseVoice(midi);
+    }
+  }
+
+  _releaseVoice(midi) {
+    if (this.ready) this.sampler.triggerRelease(noteName(midi), Tone.now());
+    this.voices.delete(midi);
+  }
+
+  _releaseKeys() {
+    for (const midi of this.active.keys()) this.piano.release(midi);
+    this.active.clear();
   }
 
   _trigger(from, to) {
@@ -130,16 +169,20 @@ export class Player {
       const n = this.notes[this.pointer++];
       if (n.time < from - 0.02) continue;
       const name = noteName(n.midi);
-      const dur = Math.max(0.08, n.duration / this.speed);
-      if (this.ready) this.sampler.triggerAttackRelease(name, dur, Tone.now(), 0.3 + n.velocity * 0.7);
+      const velocity = Math.min(1, (0.3 + n.velocity * 0.7) * this.pedalState.velocityScale());
+      // Hold the tone with an attack and release it at its own end, or later
+      // when a pedal holds it. A fixed duration would cut a sustained tone.
+      if (this.ready) this.sampler.triggerAttack(name, Tone.now(), velocity);
       this.piano.press(n.midi, HAND_COLOR[n.hand], n.velocity);
       this.active.set(n.midi, n.time + n.duration);
+      this.voices.set(n.midi, n.time + n.duration);
     }
   }
 
   _releaseAll() {
-    for (const midi of this.active.keys()) this.piano.release(midi);
-    this.active.clear();
+    this._releaseKeys();
+    for (const midi of [...this.voices.keys()]) this._releaseVoice(midi);
+    this.pedalState.reset(this.time);
   }
 
   _emit() { if (this.onState) this.onState(this); }
