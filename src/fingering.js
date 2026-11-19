@@ -3,7 +3,10 @@
 // wristX (target hand position in key units) and spread (hand stretch factor).
 //
 // Method:
-//  1. Split notes between hands by MIDI track median pitch, else by pitch.
+//  1. Split notes between hands by staff. A MIDI track is the closest thing a
+//     file has to a staff, so a track that names its hand keeps that hand for
+//     every note. A file with no staff evidence falls back to the register rule
+//     at middle C, chord by chord.
 //  2. Group each hand's notes into chords (onsets within CHORD_WINDOW).
 //  3. Beam search over finger assignments. Cost favours small hand shifts,
 //     comfortable spans, finger reuse and pitch-ordered fingers.
@@ -29,10 +32,69 @@ function median(arr) {
 }
 
 // --- Step 1: hand split -------------------------------------------------
-// Chord-aware split: no hand may hold a chord wider than MAX_SPAN semitones
-// or more than 5 notes. Wide chords divide between the hands at the best gap.
+// A score divides the hands by staff, not by clef or register: the lower staff
+// is the left hand even when its notes climb above middle C. A MIDI file has no
+// staff, so a track stands in for one. Two kinds of evidence decide a chord.
+//   1. A track name that names a hand ("Piano right", "Accompaniment left").
+//      This is direct evidence of a staff, so it holds across the whole track.
+//   2. The chord's own register, when no track names a hand. A chord wholly
+//      above middle C belongs to the right hand, and a chord wholly below it to
+//      the left. A chord that straddles middle C stays on one hand.
+// A staff split that would put the left hand above the right is refused,
+// because a MIDI file cannot mark a real hand crossing. The register decides
+// instead, so the two hands never pass through each other.
+//
+// A chord may still reach beyond one hand. MAX_SPAN caps a single-hand span,
+// and a wide chord divides between the hands where each hand can reach.
 const MAX_SPAN = 15;
+const NOTE_MAX = 5;
+const MIDDLE_C = 60;
 const spanOf = (ns) => ns[ns.length - 1].midi - ns[0].midi;
+
+const SIDE_WORDS = {
+  R: new Set(['right', 'rh', 'treble', 'discant', 'diskant']),
+  L: new Set(['left', 'lh', 'bass', 'basso']),
+};
+
+// Hand named by a track title, or null. "Piano right", "Accompaniment left",
+// "R.H." and "m.s." all resolve here.
+function nameSide(name) {
+  const tokens = String(name || '').toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  for (const side of ['R', 'L']) {
+    if (tokens.some((t) => SIDE_WORDS[side].has(t))) return side;
+  }
+  return null;
+}
+
+// Group a chord by staff. A note with no staff takes the nearer staff by pitch,
+// so a chord that names one staff takes every note.
+function staffGroups(ns, sides) {
+  const groups = { L: [], R: [] };
+  const sum = { L: 0, R: 0 };
+  for (let i = 0; i < ns.length; i++) {
+    const side = sides[i];
+    if (!side) continue;
+    groups[side].push(ns[i]);
+    sum[side] += ns[i].midi;
+  }
+  const centre = {
+    L: groups.L.length ? sum.L / groups.L.length : null,
+    R: groups.R.length ? sum.R / groups.R.length : null,
+  };
+  for (let i = 0; i < ns.length; i++) {
+    if (sides[i]) continue;
+    const nearL = centre.L === null ? Infinity : Math.abs(ns[i].midi - centre.L);
+    const nearR = centre.R === null ? Infinity : Math.abs(ns[i].midi - centre.R);
+    groups[nearL <= nearR ? 'L' : 'R'].push(ns[i]);
+  }
+  return groups;
+}
+
+const fitsHand = (ns) => ns.length <= NOTE_MAX && (ns.length < 2 || spanOf(ns) <= MAX_SPAN);
+
+// True when the left-hand group sits above the right-hand group.
+const crossed = (groups) => groups.L.length > 0 && groups.R.length > 0 &&
+  groups.L[groups.L.length - 1].midi > groups.R[0].midi;
 
 export function splitHands(notes) {
   const byTrack = new Map();
@@ -40,11 +102,10 @@ export function splitHands(notes) {
     if (!byTrack.has(n.track)) byTrack.set(n.track, []);
     byTrack.get(n.track).push(n);
   }
-  const trackSide = new Map();
-  for (const [track, ns] of byTrack) {
-    const med = median(ns.map((n) => n.midi));
-    trackSide.set(track, med < 57 ? 'L' : med >= 63 ? 'R' : null);
-  }
+  // The staff a track declares in its title. A track with no name has no staff
+  // evidence, and its chords fall back to the register rule below.
+  const namedSide = new Map();
+  for (const [track, ns] of byTrack) namedSide.set(track, nameSide(ns[0].trackName));
 
   const out = notes.map((n) => ({ ...n }));
   const chords = groupChords(out);
@@ -52,37 +113,63 @@ export function splitHands(notes) {
   for (const chord of chords) {
     const ns = chord.notes; // pitch-ordered
     const n = ns.length;
-    const fitsOne = n <= 5 && spanOf(ns) <= MAX_SPAN;
+    let staff = ns.map((x) => namedSide.get(x.track));
+    if (staff.some(Boolean)) {
+      // The file names a staff for at least one note of this chord. Keep every
+      // note with its own staff, unless a staff group is beyond one hand.
+      const groups = staffGroups(ns, staff);
+      if (crossed(groups)) {
+        // The named staves put the left hand above the right. No MIDI mark says
+        // this is a real crossing, so the register decides instead.
+        staff = ns.map(() => null);
+      } else if (fitsHand(groups.L) && fitsHand(groups.R)) {
+        for (const x of groups.L) x.hand = 'L';
+        for (const x of groups.R) x.hand = 'R';
+        continue;
+      }
+    }
 
-    if (fitsOne) {
-      // One hand can play the whole chord: pick by track hint, then register.
-      const hints = new Set(ns.map((x) => trackSide.get(x.track)));
-      let hand;
-      if (hints.size === 1 && !hints.has(null)) hand = [...hints][0];
-      else hand = median(ns.map((x) => x.midi)) < 60 ? 'L' : 'R';
+    const straddles = ns[0].midi < MIDDLE_C && ns[n - 1].midi >= MIDDLE_C;
+    const fitsOne = n <= NOTE_MAX && spanOf(ns) <= MAX_SPAN;
+    if (fitsOne && !staff.some(Boolean)) {
+      // No staff name, so the chord's own register decides. A chord that
+      // straddles middle C stays on one hand, which keeps an octave whole: an
+      // octave C3-C4 belongs to the left hand, and middle C alone to the right.
+      const med = median(ns.map((x) => x.midi));
+      const hand = med < MIDDLE_C || (straddles && med === MIDDLE_C) ? 'L' : 'R';
       for (const x of ns) x.hand = hand;
       continue;
     }
 
-    // Wide or dense chord: divide between the hands. Choose the partition
-    // that minimises the widest hand span, stretching only when forced.
+    // Wide or dense chord: divide between the hands. Prefer a division that
+    // both hands can reach, and inside that set keep each note with its staff.
+    // Fall back to the smallest span when no division is reachable.
     let best = null;
+    let fallback = null;
     for (let k = 1; k < n; k++) {
       const lo = ns.slice(0, k);
       const hi = ns.slice(k);
-      if (lo.length > 5 || hi.length > 5) continue;
+      if (lo.length > NOTE_MAX || hi.length > NOTE_MAX) continue;
       const maxSpan = Math.max(spanOf(lo), spanOf(hi));
       const gap = hi[0].midi - lo[lo.length - 1].midi;
       const splitPitch = (hi[0].midi + lo[lo.length - 1].midi) / 2;
-      const score =
+      const base =
         maxSpan * 1.0 +
         Math.abs(lo.length - hi.length) * 0.4 -
         Math.min(gap, 6) * 0.3 +
-        Math.abs(splitPitch - 60) * 0.02;
+        Math.abs(splitPitch - MIDDLE_C) * 0.02;
+      if (!fallback || base < fallback.score) fallback = { k, score: base };
+      if (maxSpan > MAX_SPAN) continue;
+      let wrongStaff = 0;
+      for (let i = 0; i < n; i++) {
+        if (staff[i] && staff[i] !== (i < k ? 'L' : 'R')) wrongStaff++;
+      }
+      const score = base + wrongStaff * 8;
       if (!best || score < best.score) best = { k, score };
     }
-    if (best) {
-      for (let i = 0; i < n; i++) ns[i].hand = i < best.k ? 'L' : 'R';
+    const pick = best || fallback;
+    if (pick) {
+      for (let i = 0; i < n; i++) ns[i].hand = i < pick.k ? 'L' : 'R';
       continue;
     }
 

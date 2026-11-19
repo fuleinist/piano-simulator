@@ -43,7 +43,10 @@ for (const f of files) {
     if (t.channel === 9) return; // skip drum channel
     for (const n of t.notes) {
       if (n.midi < MIDI_MIN || n.midi > MIDI_MAX) continue;
-      notes.push({ midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity, track: ti });
+      notes.push({
+        midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity,
+        track: ti, trackName: t.name,
+      });
     }
   });
   if (!notes.length) { fail(`${f}: no playable notes`); continue; }
