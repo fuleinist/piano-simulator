@@ -53,7 +53,10 @@ export class Player {
       if (track.channel === 9) return; // skip percussion
       for (const n of track.notes) {
         if (n.midi < MIDI_MIN || n.midi > MIDI_MAX) continue;
-        raw.push({ midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity, track: ti });
+        raw.push({
+          midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity,
+          track: ti, trackName: track.name,
+        });
       }
     });
     raw.sort((a, b) => a.time - b.time || a.midi - b.midi);
