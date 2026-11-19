@@ -29,7 +29,7 @@ A span rides in with the note bars, so a pedal press reaches the strike line at 
 
 The player lifts every pedal at the end of a piece, so the last chord rings out and then stops. A piece with no pedal events shows no lane and no readout.
 
-Fourteen of the 18 built-in pieces carry the damper pedal. Three of them also carry the soft pedal, and the Nutcracker Andante carries all three pedals. The other four pieces carry no pedal event at all. The soft pedal changes the level only. A sampler cannot move its hammers, so the tone does not darken.
+Fifteen of the 18 built-in pieces carry the damper pedal. Three of them also carry the soft pedal, and the Nutcracker Andante carries all three pedals. The other three pieces carry no pedal event at all. The soft pedal changes the level only. A sampler cannot move its hammers, so the tone does not darken.
 
 ### Two rigged hands
 Each hand is a skinned mesh with 25 joints, the WebXR hand skeleton. The mesh comes from the `generic-hand` profile of the WebXR Input Profiles, which is the asset Three.js uses for hand tracking. A rig module poses the bones, and a contact solve places the wrist so the playing fingertips meet their keys.
@@ -174,6 +174,7 @@ npm run fixtures
 
 - MIDI files: `public/midi/`, from the `zz85/midiviz` repository (gh-pages branch).
 - Three files exercise every pedal lane: `bach_wtc1_04.mid`, `bach_wtc2_06.mid`, and `tchai_nutcracker.mid`. They came from the same archive, which holds live competition recordings with damper, sostenuto, and soft pedal events.
+- `kiss_the_rain.mid` comes from freemidi.org. The archive copy of that piece carries no pedal event, and this copy carries 86 damper spans.
 - Piano samples: `public/samples/piano/`, the Salamander grand piano set from tonejs.github.io.
 - Hand meshes: `public/hands/`, the `generic-hand` profile of the WebXR Input Profiles, MIT licence, copyright 2019 Amazon. See `docs/hands-assets.md`.
 - The pieces are public-domain compositions. The MIDI renditions and samples belong to their respective authors.
