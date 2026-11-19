@@ -1,5 +1,7 @@
 # Piano Simulator
 
+<img src="public/brand/logo.png" alt="Piano Simulator logo" width="128" />
+
 A browser piano visualizer for practice and video recording. It loads a MIDI file, draws all 88 keys, and animates two hands that play the piece. Colored bars glide from far behind the piano toward the keys to show each note before it sounds. A sampled grand piano plays the audio.
 
 ![Performance view](docs/screenshots/perform.png)
