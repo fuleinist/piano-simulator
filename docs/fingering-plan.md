@@ -332,6 +332,8 @@ Branch: `feat/fingering-motion`, one pull request against `main` at the end of e
 
 **Verify:** The abduction snap metric reads 0 for transitions over 0.05 rad. `tests/handrig.test.mjs` still passes.
 
+**Done.** `src/motion.js` holds `travelLead`, `easeInOut`, and `blendPose`; `RiggedHand` samples them in song time. The window is sized by distance and the gap, not by a constant, which also moved arrival at the note from 28 mm short to 23 mm (p90: 72 mm to 40 mm) on three pieces. Measured in the browser over 20 s of `elise.mid`, no single frame moves a finger by more than 12°, against 31° before; 45 frames used to jump more than 25°.
+
 #### Task 1.3: Use the note length
 
 **Files:**
