@@ -115,6 +115,36 @@ test('the local library has a dialog and a persistent store', () => {
   assert.match(read('src/library.js'), /crypto\.subtle\.digest/, 'imports must dedupe on a content hash');
 });
 
+test('the remote search is wired to a Worker proxy', () => {
+  assert.match(html, /<button\b[^>]*\bid="searchBtn"[^>]*aria-haspopup="dialog"/, 'no #searchBtn');
+  const dialog = html.match(/<dialog\b[^>]*\bid="searchDialog"[^>]*>/);
+  assert.ok(dialog, 'index.html carries no #searchDialog');
+  const labelled = attr(dialog[0], 'aria-labelledby');
+  assert.ok(html.includes(`id="${labelled}"`), 'aria-labelledby must name a real element');
+  assert.match(html, /<input\b[^>]*\bid="searchInput"/, 'the dialog needs a search field');
+  assert.match(html, /<ul\b[^>]*\bid="searchResults"/, 'the dialog needs a result list');
+
+  // The Worker serves the site and owns /api/midi. Without the binding the
+  // script has nothing to serve the build from.
+  assert.equal(wrangler.main, 'worker/index.js', 'wrangler must run the Worker');
+  assert.equal(wrangler.assets.binding, 'ASSETS', 'the Worker needs the assets binding');
+  const worker = read('worker/index.js');
+  assert.match(worker, /'\/api\/midi'/, 'the Worker must route the proxy path');
+  assert.match(worker, /env\.ASSETS\.fetch/, 'the Worker must fall through to the assets');
+
+  // The dev and preview servers have no Worker, so the same handler runs as
+  // middleware there. Otherwise the feature only works after a deploy.
+  const vite = read('vite.config.js');
+  assert.match(vite, /worker\/proxy\.js/, 'vite must reuse the proxy handler');
+  assert.match(vite, /configurePreviewServer/, 'vite preview must serve the proxy too');
+
+  // The proxy is the only new network surface, so its limits are guarded.
+  const proxy = read('worker/proxy.js');
+  assert.match(proxy, /isAllowedTarget/, 'the proxy needs an address allowlist');
+  assert.match(proxy, /MAX_BYTES/, 'the proxy needs a size cap');
+  assert.match(proxy, /RateLimiter/, 'the proxy needs a rate limit');
+});
+
 test('the deploy publishes the build output', () => {
   assert.equal(wrangler.assets.directory, './dist', 'the Worker must serve dist/');
   // vite writes to dist/ unless vite.config.js says otherwise.

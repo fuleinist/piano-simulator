@@ -1,11 +1,14 @@
 {
-  // Static assets only: `npm run build` writes the site to dist/, and
-  // `wrangler deploy` publishes that folder as a Worker with no script.
+  // A static build from dist/, plus one dynamic route: /api/midi in
+  // worker/index.js, which adds CORS to a third-party MIDI download. Every
+  // other request reaches the assets binding.
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "piano-simulator",
+  "main": "worker/index.js",
   "compatibility_date": "2026-11-20",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     // The app is a single page, so an unknown path falls back to index.html
     // instead of a bare 404 page.
     "not_found_handling": "single-page-application"

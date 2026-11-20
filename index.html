@@ -32,6 +32,7 @@
         </div>
         <button id="loadBtn" class="btn">Load MIDI</button>
         <button id="libraryBtn" class="btn" aria-haspopup="dialog">Library</button>
+        <button id="searchBtn" class="btn" aria-haspopup="dialog">Find music</button>
         <input id="fileInput" type="file" accept=".mid,.midi" multiple hidden />
       </div>
       <a class="icon-link" href="https://github.com/fuleinist/piano-simulator"
@@ -110,6 +111,24 @@
     <div class="lib-foot">
       <button id="libImport" class="btn" type="button">Add MIDI files…</button>
       <button id="libDone" class="btn small" type="button">Done</button>
+    </div>
+  </dialog>
+
+  <dialog id="searchDialog" class="lib-dialog search-dialog" aria-labelledby="searchTitle">
+    <div class="lib-head">
+      <h2 id="searchTitle">Find music online</h2>
+      <button id="searchClose" class="btn small" type="button" aria-label="Close">✕</button>
+    </div>
+    <form id="searchForm" class="search-form" role="search">
+      <input id="searchInput" type="search" aria-label="Search the Internet Archive"
+             placeholder="Composer or title…" autocomplete="off" />
+      <button id="searchGo" class="btn" type="submit">Search</button>
+    </form>
+    <p id="searchStatus" class="hint" role="status" aria-live="polite">Results come from the Internet Archive. Check the licence before you publish a recording.</p>
+    <ul id="searchResults" class="lib-list" hidden></ul>
+    <div class="lib-foot">
+      <span class="hint">Source: <a href="https://archive.org" target="_blank" rel="noopener noreferrer">Internet Archive</a></span>
+      <button id="searchDone" class="btn small" type="button">Done</button>
     </div>
   </dialog>
 

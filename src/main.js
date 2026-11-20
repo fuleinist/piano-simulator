@@ -13,6 +13,8 @@ import { LibraryPanel } from './libraryui.js';
 import {
   buildRecord, contentId, displayName, isQuotaError, sortRecords, stripExtension, toEntry,
 } from './library.js';
+import { SearchPanel } from './searchui.js';
+import { internetArchive } from './sources/internetarchive.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage');
@@ -62,6 +64,17 @@ const panel = new LibraryPanel({
   },
   onRename: (key, changes) => renameRecord(key, changes),
   onDelete: (key) => deleteRecord(key),
+});
+
+const search = new SearchPanel({
+  dialog: $('searchDialog'),
+  form: $('searchForm'),
+  input: $('searchInput'),
+  status: $('searchStatus'),
+  results: $('searchResults'),
+  providers: [internetArchive],
+  onLoad: (result) => loadRemote(result),
+  onSave: (result) => saveRemote(result),
 });
 
 // The pedals that the piece carries, for the song label. A piece with no
@@ -128,6 +141,9 @@ $('libImport').addEventListener('click', () => {
   panel.close();
   $('fileInput').click();
 });
+$('searchBtn').addEventListener('click', () => search.open());
+$('searchClose').addEventListener('click', () => search.close());
+$('searchDone').addEventListener('click', () => search.close());
 
 $('fileInput').addEventListener('change', async (e) => {
   const files = [...e.target.files];
@@ -204,6 +220,53 @@ async function importFile(file) {
     picker.clearSelection();
     $('songLabel').textContent = `Invalid MIDI: ${err.message}`;
     return { saved: false };
+  } finally {
+    maybeHideLoader();
+  }
+}
+
+/**
+ * Play a remote result. The bytes pass through the proxy, then take the same
+ * path as a local file, so notes, hands and pedals behave the same.
+ */
+async function loadRemote(result) {
+  $('loaderText').textContent = `Downloading ${result.title}…`;
+  $('loader').classList.remove('hide');
+  try {
+    const bytes = await internetArchive.fetchMidi(result);
+    const info = await player.loadBuffer(bytes, result.composer ? `${result.title} — ${result.composer}` : result.title);
+    currentEntry = null;
+    picker.clearSelection();
+    $('songLabel').textContent = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)} · ${result.source}`;
+    search.close();
+    return info;
+  } finally {
+    maybeHideLoader();
+  }
+}
+
+/** Download a remote result and keep it in the local library. */
+async function saveRemote(result) {
+  if (!libraryReady) throw new Error('this browser has no local library');
+  $('loaderText').textContent = `Downloading ${result.title}…`;
+  $('loader').classList.remove('hide');
+  try {
+    const bytes = await internetArchive.fetchMidi(result);
+    const info = await player.loadBuffer(bytes, result.title);
+    const id = await contentId(bytes);
+    const existing = await store.get(id);
+    if (!existing) {
+      const record = buildRecord({ id, name: `${result.title}.mid`, bytes, info });
+      await store.put(record);
+      if (!persistAsked) { persistAsked = true; store.persist().catch(() => {}); }
+    }
+    const record = await store.get(id);
+    const entry = toEntry(record);
+    currentEntry = entry;
+    await refreshLibrary();
+    picker.setSelection(entry.id);
+    $('songLabel').textContent = `${displayName(entry)} · ${info.notes} notes${pedalNote(info.pedals)} · saved to your library`;
+    return entry;
   } finally {
     maybeHideLoader();
   }
@@ -392,6 +455,6 @@ frame();
 
 // Debug/test handle (harmless in production).
 window.__piano = {
-  player, scene, piano, bars, hands, recorder, preview, THREE, picker, store, panel,
+  player, scene, piano, bars, hands, recorder, preview, THREE, picker, store, panel, search,
   library: () => ({ ready: libraryReady, records, currentEntry }),
 };
