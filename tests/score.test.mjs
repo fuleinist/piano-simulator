@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  BASS, MAX_GAP, MIN_GAP, PAD, TREBLE, barTimes, layoutScore, ledgerStepsOf, pitchOf,
-  staffOf, ticksToSeconds,
+  BASS, MAX_GAP, MIN_GAP, PAD, TREBLE, barTimes, layoutScore, ledgerStepsOf, noteValueOf,
+  pitchOf, signatureAt, staffOf, ticksToSeconds,
 } from '../src/score.js';
 
 const read = (rel) => fs.readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
@@ -18,8 +18,26 @@ const html = read('index.html');
 const css = read('src/styles.css');
 const main = read('src/main.js');
 const player = read('src/player.js');
+const view = read('src/scoreui.js');
 
 const note = (midi, time, duration = 0.5, hand = 'R') => ({ midi, time, duration, hand });
+
+// A piece needs the tempo map and the signature to name a note value, so the
+// helpers below build both, at the 120 bpm that a bare file uses.
+const TEMPOS = [{ ticks: 0, bpm: 120 }];
+const PPQ = 480;
+const SIGNATURES = [{ ticks: 0, timeSignature: [4, 4] }];
+const barsOf = (duration, timeSignatures = SIGNATURES) => barTimes(
+  { ppq: PPQ, tempos: TEMPOS, timeSignatures },
+  { duration },
+);
+const sheetOf = (notes, { duration = 4, timeSignatures = SIGNATURES } = {}) => layoutScore(notes, {
+  bars: barsOf(duration, timeSignatures),
+  width: 1200,
+  tempos: TEMPOS,
+  ppq: PPQ,
+  timeSignatures,
+});
 
 const attr = (tag, name) => {
   const m = tag.match(new RegExp(`${name}="([^"]*)"`));
@@ -223,4 +241,218 @@ test('the app feeds the paper and follows playtime', () => {
   assert.match(player, /this\.onLoad = null/, 'the player has no load hook');
   assert.match(player, /this\.barlines = barTimes\(midi\.header[^)]*\)/, 'the player does not read the bar lines');
   assert.match(player, /if \(this\.onLoad\) this\.onLoad\(this\)/, 'the load hook never fires');
+  assert.match(player, /this\.scoreMeta = \{/, 'the player never publishes the tempo map');
+  assert.match(main, /meta: p\.scoreMeta/, 'the view never receives the tempo map');
+});
+
+// --- Written values, beams, dots, rests, and the signature ----------------
+
+test('a duration names the note value a printed score would use', () => {
+  // At 120 bpm a quarter note lasts half a second, so sixteenths are easy to
+  // count: 0.125 s is one sixteenth.
+  assert.equal(noteValueOf(4).name, 'quarter');
+  assert.equal(noteValueOf(2).name, 'eighth');
+  assert.equal(noteValueOf(1).name, 'sixteenth');
+  assert.equal(noteValueOf(8).name, 'half');
+  assert.equal(noteValueOf(16).name, 'whole');
+  assert.equal(noteValueOf(6).name, 'quarter', 'six sixteenths is a dotted quarter');
+  assert.equal(noteValueOf(6).dotted, true, 'six sixteenths needs a dot');
+  assert.equal(noteValueOf(1.5).dotted, true, 'a dotted sixteenth keeps its dot');
+  assert.equal(noteValueOf(4).open, false, 'a quarter note is solid');
+  assert.equal(noteValueOf(8).open, true, 'a half note is hollow');
+  assert.equal(noteValueOf(16).stem, false, 'a whole note has no stem');
+  assert.equal(noteValueOf(3).flags, 1, 'a dotted eighth needs one flag');
+  assert.equal(noteValueOf(1).flags, 2, 'a sixteenth needs two flags');
+});
+
+test('the paper draws the value of each note, not one shape for all', () => {
+  const sheet = sheetOf([
+    note(72, 0, 2), // whole note
+    note(72, 2, 1), // half note
+    note(72, 3, 0.5), // quarter note
+    note(72, 3.5, 0.25), // eighth note
+  ], { duration: 8 });
+  const byTime = new Map(sheet.glyphs.map((g) => [g.time, g]));
+  assert.equal(byTime.get(0).value.name, 'whole');
+  assert.equal(byTime.get(0).stem, null, 'a whole note must not carry a stem');
+  assert.equal(byTime.get(2).value.open, true, 'a half note must print a hollow head');
+  assert.equal(byTime.get(2).stem !== null, true, 'a half note carries a stem');
+  assert.equal(byTime.get(3).value.open, false, 'a quarter note must print a solid head');
+  assert.equal(byTime.get(3.5).flags >= 1 || byTime.get(3.5).beam !== null, true, 'an eighth note must show its value');
+});
+
+test('beams join the short notes of one beat and nothing else', () => {
+  // Four eighths at 120 bpm: two fall on each side of the half-second beat.
+  const sheet = sheetOf([
+    note(72, 0, 0.25), note(74, 0.25, 0.25), note(76, 0.5, 0.25), note(77, 0.75, 0.25),
+  ]);
+  assert.equal(sheet.beams.length, 2, 'four eighths over two beats make two beams');
+  const [first] = sheet.beams;
+  assert.equal(first.count, 1, 'eighths take one beam line');
+  assert.ok(first.x2 > first.x1, 'a beam must run left to right');
+  assert.ok(first.y1 !== null && first.y2 !== null, 'a beam needs a height at both ends');
+
+  // Every beamed note loses its flag, or the beam and the flag say it twice.
+  for (const glyph of sheet.glyphs) {
+    if (glyph.beam) assert.equal(glyph.flags, 0, 'a beamed note must not also draw a flag');
+  }
+});
+
+test('a lone eighth keeps its flag, and a sixteenth takes two', () => {
+  const sheet = sheetOf([note(72, 0, 0.25)], { duration: 4 });
+  const [glyph] = sheet.glyphs;
+  assert.equal(sheet.beams.length, 0, 'one short note cannot be beamed');
+  assert.equal(glyph.flags, 1, 'a lone eighth needs its flag');
+  assert.equal(glyph.stem !== null, true, 'a flag needs a stem to hang from');
+
+  const run = sheetOf([
+    note(72, 0, 0.125), note(74, 0.125, 0.125), note(76, 0.25, 0.125), note(77, 0.375, 0.125),
+  ]);
+  assert.equal(run.beams.length, 1, 'four sixteenths inside one beat make one beam');
+  assert.equal(run.beams[0].count, 2, 'sixteenths take two beam lines');
+});
+
+test('a compound metre beams three eighths, not one', () => {
+  const signature = [{ ticks: 0, timeSignature: [6, 8] }];
+  const waltz = [];
+  for (let i = 0; i < 6; i++) waltz.push(note(72 + (i % 3), i * 0.25, 0.25));
+  const sheet = sheetOf(waltz, { duration: 3, timeSignatures: signature });
+  assert.equal(sheet.beams.length, 2, '6/8 groups its eighths in threes');
+  assert.equal(sheet.beams[0].time, 0);
+  assert.equal(sheet.beams[1].time, 0.75, 'the second group starts a dotted quarter later');
+});
+
+test('a beamed group takes one stem direction from its average pitch', () => {
+  // The first pair sits high on the staff and the second pair sits low.
+  const sheet = sheetOf([
+    note(81, 0, 0.25), note(83, 0.25, 0.25), note(60, 0.5, 0.25), note(62, 0.75, 0.25),
+  ]);
+  const [high, low] = sheet.beams;
+  assert.equal(high.up, false, 'a high group must hang its stems down');
+  assert.equal(low.up, true, 'a low group must point its stems up');
+  for (const glyph of sheet.glyphs) {
+    if (!glyph.beam) continue;
+    assert.equal(glyph.stem.up, sheet.beams[glyph.beam.id].up, 'every stem in a beam must agree with its beam');
+  }
+});
+
+test('a silent beat takes a rest, and a held note takes none', () => {
+  // The right hand plays at 0 s and 1 s, so the beat between them needs a rest.
+  const sheet = sheetOf([
+    note(72, 0, 0.5), note(72, 1, 0.5),
+  ], { duration: 1.5 });
+  const treble = sheet.rests.filter((r) => r.staff === TREBLE);
+  assert.equal(treble.length, 1, 'the silent beat takes one rest');
+  assert.equal(treble[0].symbol, 'quarter', 'a silent beat reads as a quarter rest');
+  assert.equal(treble[0].time, 0.5, 'the rest sits on the beat it fills');
+
+  // A half note held across two beats leaves no room for a rest.
+  const held = sheetOf([note(72, 0, 1)], { duration: 1 });
+  const heldRests = held.rests.filter((r) => r.staff === TREBLE);
+  assert.equal(heldRests.length, 0, 'a note that still sounds needs no rest');
+});
+
+test('two silent beats merge into a half rest, and a silent bar into a whole rest', () => {
+  // Notes at 0 s, 1.5 s and 4.5 s leave beats 2 and 3 of bar one silent, and
+  // the whole of bar two silent.
+  const sheet = sheetOf([
+    note(72, 0, 0.5), note(72, 1.5, 0.5), note(72, 4.5, 0.5),
+  ], { duration: 5 });
+  const treble = sheet.rests.filter((r) => r.staff === TREBLE);
+  const symbols = treble.map((r) => r.symbol);
+  assert.equal(symbols[0], 'half', 'the two silent beats of bar one merge');
+  assert.equal(treble[0].time, 0.5, 'the half rest starts on the second beat, after the first note');
+  const whole = treble.find((r) => r.symbol === 'whole');
+  assert.ok(whole, 'a bar with no notes takes one whole rest');
+  assert.equal(whole.time, 2, 'the whole rest starts the silent bar');
+});
+
+test('a staff the piece never uses draws no rests', () => {
+  const sheet = sheetOf([note(72, 0, 0.5), note(74, 1, 0.5)], { duration: 2 });
+  assert.equal(sheet.rests.filter((r) => r.staff === BASS).length, 0, 'an empty staff stays empty');
+});
+
+test('a dotted note carries one dot, in the space beside the head', () => {
+  // 0.75 s at 120 bpm is three sixteenths, which is a dotted eighth.
+  const sheet = sheetOf([note(72, 0, 0.75)]);
+  const [glyph] = sheet.glyphs;
+  assert.equal(glyph.value.dotted, true, 'three sixteenths is dotted');
+  assert.equal(glyph.dots.length, 1, 'one head takes one dot');
+  assert.ok(glyph.dots[0].x > 0, 'the dot sits right of the head');
+  const head = glyph.heads[0];
+  const onLine = Math.abs(head.step % 2) === 0;
+  const wanted = onLine ? head.y - sheet.gap / 2 : head.y;
+  assert.equal(glyph.dots[0].y, wanted, 'a dot on a lined head moves into the space above');
+});
+
+test('the time signature comes from the file, and the gutter reads it', () => {
+  const sheet = sheetOf([note(72, 0, 0.5)], { timeSignatures: [{ ticks: 0, timeSignature: [3, 4] }] });
+  assert.equal(sheet.signatures.length, 1);
+  assert.equal(sheet.signatures[0].beats, 3);
+  assert.equal(sheet.signatures[0].unit, 4);
+  assert.equal(signatureAt(sheet.signatures, 10).beats, 3, 'the signature holds to the end of the piece');
+
+  // A file with no signature reads as 4/4, and a change of signature lands at
+  // the time the header gives it.
+  const plain = layoutScore([note(72, 0)], { width: 1200 });
+  assert.equal(plain.signatures[0].beats, 4, 'a bare file reads as 4/4');
+  assert.equal(plain.signatures[0].unit, 4);
+  const changed = sheetOf([note(72, 0, 0.5)], {
+    timeSignatures: [{ ticks: 0, timeSignature: [4, 4] }, { ticks: 480, timeSignature: [3, 4] }],
+  });
+  assert.equal(changed.signatures.length, 2, 'a mid-piece change makes a second segment');
+  assert.equal(changed.signatures[1].beats, 3);
+  assert.equal(signatureAt(changed.signatures, 0.4).beats, 4);
+  assert.equal(signatureAt(changed.signatures, 0.6).beats, 3, 'a signature change lands at half a second');
+
+  // The view writes the signature into the gutter, and the CSS styles it.
+  assert.match(view, /_showSignature\(/, 'the view never shows the time signature');
+  assert.match(view, /signatureAt\(/, 'the view does not follow a signature change');
+  assert.ok(css.includes('.sc-sig {'), 'no .sc-sig rule in styles.css');
+});
+
+test('every mark the paper draws stays on the paper', () => {
+  const sheet = sheetOf([
+    note(21, 0, 1), note(108, 0, 1), note(60, 1, 1, 'L'), note(72, 2, 0.5),
+  ], { duration: 8 });
+  const limited = layoutScore([
+    note(21, 0, 1), note(108, 0, 1), note(60, 1, 1, 'L'), note(72, 2, 0.5),
+  ], {
+    bars: barsOf(8),
+    width: 1200,
+    maxHeight: 190,
+    tempos: TEMPOS,
+    ppq: PPQ,
+    timeSignatures: SIGNATURES,
+  });
+  for (const sheetToCheck of [sheet, limited]) {
+    for (const glyph of sheetToCheck.glyphs) {
+      for (const head of glyph.heads) {
+        assert.ok(head.y >= 0 && head.y <= sheetToCheck.height, `MIDI ${head.midi} left the paper`);
+      }
+      if (glyph.stem) {
+        const low = Math.min(glyph.stem.y1, glyph.stem.y2);
+        const high = Math.max(glyph.stem.y1, glyph.stem.y2);
+        assert.ok(low >= -1 && high <= sheetToCheck.height + 1, 'a stem left the paper');
+      }
+    }
+    for (const rest of sheetToCheck.rests) {
+      assert.ok(rest.y >= 0 && rest.y <= sheetToCheck.height, 'a rest left the paper');
+    }
+    for (const beam of sheetToCheck.beams) {
+      assert.ok(beam.y1 >= 0 && beam.y1 <= sheetToCheck.height, 'a beam left the paper');
+      assert.ok(beam.y2 >= 0 && beam.y2 <= sheetToCheck.height, 'a beam left the paper');
+    }
+  }
+});
+
+test('the view draws every symbol the layout describes', () => {
+  for (const name of ['.sc-head.open', '.sc-flag', '.sc-beam', '.sc-dot', '.sc-rest', '.sc-rest-fill', '.sc-sig']) {
+    assert.ok(css.includes(`${name} {`), `no ${name} rule in styles.css`);
+  }
+  assert.match(view, /flagPath\(/, 'the view never draws a flag');
+  assert.match(view, /restNode\(/, 'the view never draws a rest');
+  assert.match(view, /class: 'sc-beam'/, 'the view never draws a beam');
+  assert.match(view, /glyph\.value\.open \? 'sc-head open'/, 'the view never prints a hollow head');
+  assert.match(view, /this\.marks/, 'the view never draws the beams and rests');
 });

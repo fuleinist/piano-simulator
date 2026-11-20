@@ -97,19 +97,52 @@ for (const f of files) {
   // sit inside the piece and after the one before it, and the bar lines must
   // agree with the tempo map that the MIDI reader already applied to the notes.
   const bars = barTimes(midi.header, { duration: endTime });
-  const layout = layoutScore(assigned, { bars, width: 1200, maxHeight: 190 });
+  const layout = layoutScore(assigned, {
+    bars,
+    width: 1200,
+    maxHeight: 190,
+    tempos: midi.header.tempos,
+    ppq: midi.header.ppq,
+    timeSignatures: midi.header.timeSignatures,
+  });
   let badSheet = 0;
   if (!bars.length || bars[0] !== 0) badSheet++;
   for (let i = 1; i < bars.length; i++) if (!(bars[i] > bars[i - 1])) badSheet++;
   if (!(layout.gap >= MIN_GAP && layout.gap <= MAX_GAP)) badSheet++;
   let heads = 0;
+  let beams = 0;
+  let rests = 0;
+  let dotted = 0;
   for (const glyph of layout.glyphs) {
     if (!Number.isFinite(glyph.x) || !glyph.heads.length) badSheet++;
+    // Every note must carry a written value, or the paper shows no shape.
+    if (!glyph.value || !glyph.value.name) badSheet++;
+    if (glyph.value.dotted) dotted++;
+    if (glyph.value.stem && !glyph.stem) badSheet++;
     for (const head of glyph.heads) {
       heads++;
       if (!(head.y >= 0 && head.y <= layout.height)) badSheet++;
     }
     if (glyph.stem && !(Number.isFinite(glyph.stem.y1) && Number.isFinite(glyph.stem.y2))) badSheet++;
+    // A flag hangs from a stem, so a flagged note without one cannot draw.
+    if (glyph.flags > 0 && !glyph.stem) badSheet++;
+    for (const dot of glyph.dots) {
+      if (!Number.isFinite(dot.x) || !(dot.y >= 0 && dot.y <= layout.height)) badSheet++;
+    }
+  }
+  for (const beam of layout.beams) {
+    beams++;
+    if (!(beam.x2 > beam.x1)) badSheet++;
+    for (const y of [beam.y1, beam.y2]) {
+      if (!(y >= 0 && y <= layout.height)) badSheet++;
+    }
+  }
+  for (const rest of layout.rests) {
+    rests++;
+    if (!(rest.y >= 0 && rest.y <= layout.height)) badSheet++;
+    // A rest belongs inside the piece, on a beat, and never after the end.
+    if (!(rest.time >= 0 && rest.time <= endTime + 1e-6)) badSheet++;
+    if (!['whole', 'half', 'quarter', 'eighth', 'sixteenth'].includes(rest.symbol)) badSheet++;
   }
   if (heads !== assigned.length) badSheet++;
   const sigs = midi.header.timeSignatures;
@@ -127,7 +160,8 @@ for (const f of files) {
     `L=${String(lh).padStart(4)} R=${String(rh).padStart(4)} ` +
     `melody=${String(melody).padStart(4)} dur=${midi.duration.toFixed(1)}s ` +
     `pedals=${used.join(' ') || 'none'} ` +
-    `sheet=${layout.glyphs.length}g/${bars.length}b gap=${layout.gap.toFixed(2)}` +
+    `sheet=${layout.glyphs.length}g/${bars.length}b gap=${layout.gap.toFixed(2)} ` +
+    `beam=${beams} rest=${rests} dot=${dotted}` +
     (badFinger || badWrist || bigSpan || badPedal || badSheet ? '  [FAIL]' : '  OK')
   );
 }

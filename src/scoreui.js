@@ -6,8 +6,8 @@
 // captures the canvas only, so the view hides the paper while a capture runs.
 
 import {
-  BASS, BASS_MID_STEP, HEAD_RX, HEAD_RY, TREBLE, TREBLE_MID_STEP,
-  layoutScore,
+  BASS, BASS_MID_STEP, HEAD_RX, HEAD_RY, OPEN_RX, TREBLE, TREBLE_MID_STEP,
+  layoutScore, signatureAt,
 } from './score.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -20,6 +20,51 @@ const SVG = (name, attrs = {}) => {
 const CLEF = { treble: '\u{1D11E}', bass: '\u{1D122}' };
 const CLEF_FONT = '"Bravura", "Segoe UI Symbol", "Noto Music", serif';
 const ACC_FONT = '"Segoe UI Symbol", serif';
+const BEAM_THICK = 0.45; // beam line thickness, in line gaps
+const FLAG_LEN = 1.5; // flag length, in line gaps
+const SIG_FONT = '"Segoe UI Symbol", "Noto Music", serif';
+
+/** The flag that hangs from the stem of an eighth or a sixteenth note. */
+function flagPath(stem, gap, index) {
+  const dir = stem.up ? 1 : -1;
+  const x = stem.x;
+  const y = stem.tip + dir * index * 0.5 * gap;
+  const len = FLAG_LEN * gap;
+  const w = 0.55 * gap;
+  return `M ${x} ${y} C ${x + w} ${y + dir * len * 0.45}, ${x + w * 0.35} ${y + dir * len * 0.8}, ${x - w * 0.2} ${y + dir * len}`;
+}
+
+/** One rest, in paper coordinates. `y` is the middle line of the staff. */
+function restNode(rest, gap, x) {
+  if (rest.symbol === 'whole' || rest.symbol === 'half') {
+    const height = 0.45 * gap;
+    // A whole rest hangs under the fourth line; a half rest sits on the third.
+    const y = rest.symbol === 'whole' ? rest.y - gap + 0.1 * gap : rest.y - height;
+    return SVG('rect', { class: 'sc-rest', x: x - 0.6 * gap, y, width: 1.2 * gap, height });
+  }
+  if (rest.symbol === 'eighth' || rest.symbol === 'sixteenth') {
+    const group = SVG('g');
+    group.append(
+      SVG('path', {
+        class: 'sc-rest',
+        d: `M ${x + 0.5 * gap} ${rest.y - 0.85 * gap} L ${x - 0.2 * gap} ${rest.y + 0.4 * gap}`,
+        'stroke-width': 0.2 * gap,
+        fill: 'none',
+      }),
+      SVG('circle', {
+        class: 'sc-rest-fill', cx: x + 0.1 * gap, cy: rest.y - 0.72 * gap, r: 0.15 * gap,
+      }),
+    );
+    return group;
+  }
+  // A quarter rest reads as the classic zigzag, centred on the middle line.
+  return SVG('path', {
+    class: 'sc-rest',
+    d: `M ${x - 0.3 * gap} ${rest.y - 0.95 * gap} L ${x + 0.4 * gap} ${rest.y - 0.3 * gap} L ${x - 0.2 * gap} ${rest.y + 0.1 * gap} L ${x + 0.45 * gap} ${rest.y + 0.85 * gap}`,
+    'stroke-width': 0.26 * gap,
+    fill: 'none',
+  });
+}
 
 // A glyph must be centred on a staff line, but a font file places its own ink
 // above and below the baseline. These metrics give the shift that puts the ink
@@ -45,6 +90,7 @@ export class ScoreView {
     this.svg = svg;
     this.notes = [];
     this.bars = [];
+    this.meta = {};
     this.layout = null;
     this.chunks = new Map();
     this.buckets = new Map();
@@ -55,9 +101,10 @@ export class ScoreView {
   }
 
   /** Take a new piece. `bars` holds the bar-line times in seconds. */
-  setSong({ notes = [], bars = [] } = {}) {
+  setSong({ notes = [], bars = [], meta = {} } = {}) {
     this.notes = notes;
     this.bars = bars;
+    this.meta = meta;
     this.layout = null;
     this.paintedAt = NaN;
     this._clear();
@@ -110,12 +157,22 @@ export class ScoreView {
     this.gutter = null;
     this.needle = null;
     this.staves = null;
+    this.marks = new Map();
+    this.sigNodes = null;
+    this.sigKey = null;
   }
 
   _build() {
     const width = Math.max(260, Math.round(this.root.clientWidth || window.innerWidth * 0.7));
     const maxHeight = Math.min(216, Math.max(96, window.innerHeight * 0.28));
-    const layout = layoutScore(this.notes, { bars: this.bars, width, maxHeight });
+    const layout = layoutScore(this.notes, {
+      bars: this.bars,
+      width,
+      maxHeight,
+      tempos: this.meta.tempos || [],
+      ppq: this.meta.ppq || 480,
+      timeSignatures: this.meta.timeSignatures || [],
+    });
     this.layout = layout;
     this._clear();
 
@@ -125,11 +182,14 @@ export class ScoreView {
     this.svg.setAttribute('height', height);
 
     this.buckets = new Map();
-    for (const glyph of layout.glyphs) {
-      const index = Math.floor(glyph.time / layout.chunkSeconds);
-      if (!this.buckets.has(index)) this.buckets.set(index, []);
-      this.buckets.get(index).push(glyph);
-    }
+    this.marks = new Map();
+    const bucketOf = (map, time) => {
+      const index = Math.floor(time / layout.chunkSeconds);
+      if (!map.has(index)) map.set(index, []);
+      return map.get(index);
+    };
+    for (const glyph of layout.glyphs) bucketOf(this.buckets, glyph.time).push(glyph);
+    for (const mark of layout.marks) bucketOf(this.marks, mark.time).push(mark);
 
     const defs = SVG('defs');
     const fade = SVG('linearGradient', { id: 'sc-gutter', x1: 0, y1: 0, x2: 1, y2: 0 });
@@ -150,11 +210,12 @@ export class ScoreView {
     if (this.visible && !this.recording) this.update(this.time);
   }
 
-  /** The clefs, the bracket, and the paper that fades the notes under them. */
+  /** The clefs, the time signature, the bracket, and the paper that fades the notes. */
   _drawGutter() {
     const layout = this.layout;
     const { gap, height } = layout;
-    const width = Math.min(64, Math.max(40, gap * 5));
+    // Room for a clef and a time signature, so neither covers a scrolling note.
+    const width = Math.min(96, Math.max(46, gap * 8));
     this.gutterWidth = width;
 
     this.gutter = SVG('g', { class: 'sc-gutter' });
@@ -168,12 +229,31 @@ export class ScoreView {
     const size = gap * 5;
     for (const [staff, step] of [[TREBLE, TREBLE_MID_STEP], [BASS, BASS_MID_STEP]]) {
       const clef = SVG('text', {
-        class: 'sc-clef', x: width * 0.56, y: yOf(step, staff) + glyphOffset(CLEF[staff], size, CLEF_FONT),
+        class: 'sc-clef', x: width * 0.34, y: yOf(step, staff) + glyphOffset(CLEF[staff], size, CLEF_FONT),
         'font-size': size, 'text-anchor': 'middle',
       });
       clef.textContent = CLEF[staff];
       this.gutter.appendChild(clef);
     }
+
+    // The time signature sits right of the clefs, on both staves, and it follows
+    // the playhead when the piece changes signature.
+    const sigSize = gap * 1.9;
+    this.sigNodes = [];
+    for (const staff of [TREBLE, BASS]) {
+      const middle = yOf(staff === BASS ? BASS_MID_STEP : TREBLE_MID_STEP, staff);
+      const pair = {};
+      for (const [key, offset] of [['top', -0.6], ['bottom', 0.6]]) {
+        const node = SVG('text', {
+          class: 'sc-sig', x: width * 0.78, 'text-anchor': 'middle',
+          'font-size': sigSize, y: middle + offset * gap,
+        });
+        this.gutter.appendChild(node);
+        pair[key] = node;
+      }
+      this.sigNodes.push(pair);
+    }
+    this._showSignature(null);
 
     const top = staves.trebleTopY;
     const bottom = staves.bassBottomY;
@@ -182,6 +262,20 @@ export class ScoreView {
       d: `M ${width - 5} ${top} h -4 v ${bottom - top} h 4`,
     }));
     this.svg.appendChild(this.gutter);
+  }
+
+  /** Write the time signature of the current time into the gutter. */
+  _showSignature(time) {
+    const segments = this.layout ? this.layout.signatures : [];
+    const sig = time === null ? segments[0] : signatureAt(segments, time);
+    if (!sig) return;
+    const key = `${sig.beats}/${sig.unit}`;
+    if (this.sigKey === key) return;
+    this.sigKey = key;
+    for (const pair of this.sigNodes || []) {
+      pair.top.textContent = String(sig.beats);
+      pair.bottom.textContent = String(sig.unit);
+    }
   }
 
   /** The staff lines stay put; each scroll block draws its own stretch. */
@@ -239,31 +333,60 @@ export class ScoreView {
           class: 'sc-ledger', x1: ledger.x1, x2: ledger.x2, y1: ledger.y, y2: ledger.y,
         }));
       }
-      node.appendChild(SVG('line', {
-        class: 'sc-stem', x1: glyph.stem.x, x2: glyph.stem.x, y1: glyph.stem.y1, y2: glyph.stem.y2,
-      }));
+      if (glyph.stem) {
+        node.appendChild(SVG('line', {
+          class: 'sc-stem', x1: glyph.stem.x, x2: glyph.stem.x, y1: glyph.stem.y1, y2: glyph.stem.y2,
+        }));
+      }
+      // A beamed note gets no flag: the beam shows the value instead.
+      for (let flag = 0; flag < glyph.flags; flag++) {
+        node.appendChild(SVG('path', { class: 'sc-flag', d: flagPath(glyph.stem, gap, flag) }));
+      }
 
+      const rx = (glyph.value.open ? OPEN_RX : HEAD_RX) * gap;
       const heads = [];
       for (const head of glyph.heads) {
         if (head.accidental) {
           const size = gap * 1.7;
           const accidental = SVG('text', {
-            class: 'sc-acc', x: -HEAD_RX * gap * 1.5, 'text-anchor': 'middle',
+            class: 'sc-acc', x: -rx * 1.5, 'text-anchor': 'middle',
             y: head.y + glyphOffset('\u266F', size, ACC_FONT), 'font-size': size,
           });
           accidental.textContent = '\u266F';
           node.appendChild(accidental);
         }
         const ellipse = SVG('ellipse', {
-          class: 'sc-head', cx: 0, cy: head.y,
-          rx: HEAD_RX * gap, ry: HEAD_RY * gap,
+          class: glyph.value.open ? 'sc-head open' : 'sc-head',
+          cx: 0, cy: head.y, rx, ry: HEAD_RY * gap,
           transform: `rotate(-18 0 ${head.y})`,
+          'stroke-width': glyph.value.open ? 0.17 * gap : 0,
         });
         node.appendChild(ellipse);
         heads.push({ el: ellipse, start: head.start, end: head.end });
       }
+      for (const dot of glyph.dots) {
+        node.appendChild(SVG('circle', {
+          class: 'sc-dot', cx: dot.x, cy: dot.y, r: 0.15 * gap,
+        }));
+      }
       block.appendChild(node);
       live.push({ heads, stem: node.querySelector('.sc-stem') });
+    }
+
+    for (const mark of this.marks.get(index) || []) {
+      if (mark.kind === 'beam') {
+        for (let line = 0; line < mark.count; line++) {
+          const drop = line * BEAM_THICK * gap * (mark.up ? 1 : -1);
+          block.appendChild(SVG('line', {
+            class: 'sc-beam',
+            x1: mark.x1 - x0, y1: mark.y1 + drop,
+            x2: mark.x2 - x0, y2: mark.y2 + drop,
+            'stroke-width': BEAM_THICK * gap,
+          }));
+        }
+      } else if (mark.kind === 'rest') {
+        block.appendChild(restNode(mark, gap, mark.x - x0));
+      }
     }
 
     this.world.appendChild(block);
@@ -277,6 +400,7 @@ export class ScoreView {
     const { pxPerSecond, chunkSeconds } = layout;
     const playheadX = layout.playheadRatio * layout.width;
     this.world.setAttribute('transform', `translate(${playheadX - time * pxPerSecond} 0)`);
+    this._showSignature(time);
 
     const first = Math.floor((time - playheadX / pxPerSecond) / chunkSeconds);
     const last = Math.floor((time + (layout.width - playheadX) / pxPerSecond) / chunkSeconds);

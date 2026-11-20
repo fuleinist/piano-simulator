@@ -34,7 +34,13 @@ Fifteen of the 18 built-in pieces carry the damper pedal. Three of them also car
 ### Sheet music
 A translucent white band sits over the top of the stage and scrolls the piece past a fixed amber marker. The band is 60% transparent, so the falling note bars stay visible behind it. The right hand takes the upper staff and the left hand takes the lower staff. A note outside its staff draws ledger lines. A note that sounds turns green.
 
+The band writes the symbols that a printed piano score uses. Each note takes the notehead of its value: a solid head for a quarter note or a shorter note, and a hollow head for a half note or a whole note. A whole note carries no stem. An eighth note carries one flag and a sixteenth note carries two. Notes that fall in one beat join under a beamed line, so a run of short notes reads as a group. A dotted value puts one dot in the space beside its head.
+
+A beat with no note on a staff takes a rest. Two silent beats share a half rest, and a bar with no note takes a whole rest. A note still sounding fills its beat, so it takes no rest. The time signature sits beside the clefs and follows a change of signature.
+
 Bar lines come from the time signature and the tempo map of the file, so the bars follow a tempo change. The line spacing shrinks when the register is wide, so no note leaves the paper. The scroll speed follows the note density, so a fast passage keeps its notes apart.
+
+The note value comes from the length the file gives, rounded to the sixteenth grid. A note held past the next onset on its staff stops at that onset, because the band draws no tie.
 
 **Sheet music** in the Show section hides the paper, and the `M` key does the same. The paper shows at start.
 
