@@ -197,6 +197,9 @@ test('the paper is styled, and a drag on it still moves the camera', () => {
   assert.ok(rule, 'no #score rule in styles.css');
   assert.match(rule[0], /pointer-events:\s*none/, 'the paper would swallow the orbit drag');
   assert.match(rule[0], /background:\s*var\(--paper\)/, 'the paper must be white');
+  // The paper must not hide the falling bars, so it stays see-through. The ink
+  // keeps full opacity, or the notes would fade with it.
+  assert.match(rule[0], /--paper:\s*rgba\(252,\s*252,\s*250,\s*0\.4\)/, 'the paper is not 60% transparent');
   assert.match(rule[0], /right:\s*238px/, 'the paper must stop short of the side panel');
   for (const rule of ['.sc-line', '.sc-head', '.sc-head.on', '.sc-stem', '.sc-playhead']) {
     assert.ok(css.includes(`${rule} {`), `no ${rule} rule in styles.css`);

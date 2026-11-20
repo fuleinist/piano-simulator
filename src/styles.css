@@ -27,11 +27,13 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; co
   box-shadow: 0 0 0 100vmax rgba(3,5,10,0.62);
 }
 
-/* Sheet music: a white paper band over the top of the stage. It takes no
-   pointer events, so a drag on the paper still orbits the camera. The right
-   edge stops short of the side panel, the same way the transport does. */
+/* Sheet music: a white paper band over the top of the stage. The paper is 60%
+   transparent, so the falling note bars stay visible behind it. The ink
+   keeps full opacity, which keeps the notes readable on the dimmed paper. It
+   takes no pointer events, so a drag on the paper still orbits the camera. The
+   right edge stops short of the side panel, the same way the transport does. */
 #score {
-  --paper: #fcfcfa;
+  --paper: rgba(252, 252, 250, 0.4);
   --ink: #1b2029;
   --ink-soft: #aeb6c4;
   --note: #17a673;

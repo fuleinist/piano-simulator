@@ -32,7 +32,7 @@ The player lifts every pedal at the end of a piece, so the last chord rings out 
 Fifteen of the 18 built-in pieces carry the damper pedal. Three of them also carry the soft pedal, and the Nutcracker Andante carries all three pedals. The other three pieces carry no pedal event at all. The soft pedal changes the level only. A sampler cannot move its hammers, so the tone does not darken.
 
 ### Sheet music
-A white paper band sits over the top of the stage and scrolls the piece past a fixed amber marker. The right hand takes the upper staff and the left hand takes the lower staff. A note outside its staff draws ledger lines. A note that sounds turns green.
+A translucent white band sits over the top of the stage and scrolls the piece past a fixed amber marker. The band is 60% transparent, so the falling note bars stay visible behind it. The right hand takes the upper staff and the left hand takes the lower staff. A note outside its staff draws ledger lines. A note that sounds turns green.
 
 Bar lines come from the time signature and the tempo map of the file, so the bars follow a tempo change. The line spacing shrinks when the register is wide, so no note leaves the paper. The scroll speed follows the note density, so a fast passage keeps its notes apart.
 

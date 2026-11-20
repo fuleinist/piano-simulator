@@ -134,7 +134,7 @@ export class ScoreView {
     const defs = SVG('defs');
     const fade = SVG('linearGradient', { id: 'sc-gutter', x1: 0, y1: 0, x2: 1, y2: 0 });
     fade.append(
-      SVG('stop', { offset: '0.55', 'stop-color': '#fcfcfa' }),
+      SVG('stop', { offset: '0.55', 'stop-color': '#fcfcfa', 'stop-opacity': 0.4 }),
       SVG('stop', { offset: '1', 'stop-color': '#fcfcfa', 'stop-opacity': 0 }),
     );
     defs.appendChild(fade);
