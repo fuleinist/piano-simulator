@@ -118,7 +118,7 @@ cd relay && npm install
 PORT=8088 ALLOWED_ORIGINS=https://piano-simulator.fuleinist.workers.dev npm start
 ```
 
-Without `VITE_RELAY_URL`, **Go live** stays disabled and nothing else changes. `relay/README.md` lists the settings.
+Without `VITE_RELAY_URL`, **Go live** stays disabled and nothing else changes. `relay/README.md` lists the settings. `docs/live-relay-deploy.md` gives the steps to host the relay and to set the address in the deploy.
 
 | Platform | Ingest |
 |---|---|

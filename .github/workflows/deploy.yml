@@ -37,8 +37,13 @@ jobs:
       - name: Test
         run: npm test
 
+      # The relay address reaches the bundle at build time. The value comes from
+      # a repository variable, so the site can point at a different relay
+      # without a code change. An empty value keeps live streaming disabled.
       - name: Build
         run: npm run build
+        env:
+          VITE_RELAY_URL: ${{ vars.VITE_RELAY_URL }}
 
       # wrangler comes from devDependencies, so CI runs the version the
       # lockfile pins rather than whatever is newest.
