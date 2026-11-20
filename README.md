@@ -116,6 +116,29 @@ npm run build
 npm run preview
 ```
 
+## Deploy
+
+The site is a static Worker. `wrangler.jsonc` publishes `dist/` and nothing else, so the build output is the whole deployment.
+
+```bash
+npm run deploy
+```
+
+That runs the build and then `wrangler deploy`, which pushes to https://piano-simulator.fuleinist.workers.dev. The first local deploy needs `wrangler login`.
+
+`main` deploys itself. `.github/workflows/deploy.yml` runs on every push to `main` and on a manual dispatch: it installs from `package-lock.json`, runs `npm test`, builds, and deploys, so the live site always matches the branch. A push that fails a test never reaches the site.
+
+The workflow needs two repository secrets. Create the token in the Cloudflare dashboard under **Account API tokens → Create Token → Edit Cloudflare Workers**, then store both values in GitHub:
+
+| Secret | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | The API token from the step above. |
+| `CLOUDFLARE_ACCOUNT_ID` | The account ID, `e4b284aa77c8190001b991f21e15df11`. |
+
+Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE_ACCOUNT_ID`, or under **Settings → Secrets and variables → Actions**. Without them the deploy step fails at authentication, and the step log says which one is missing.
+
+`npm run deploy` needs no token: it uses the local `wrangler` session.
+
 ## Controls
 
 | Control | Action |

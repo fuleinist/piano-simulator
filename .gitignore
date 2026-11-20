@@ -1,4 +1,6 @@
 node_modules/
 dist/
+# `wrangler dev` and `wrangler deploy --dry-run` state.
+.wrangler/
 *.log
 .DS_Store
