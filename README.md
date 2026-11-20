@@ -59,6 +59,18 @@ The keyboard drives the picker: the arrow keys move through the list, Home and E
 
 No keyboard shortcut fires while the picker has focus, so Space, `L`, `P`, `R` and `1`–`5` type into the search field instead of changing the view or the transport.
 
+### My MIDI files
+
+**Load MIDI** keeps every imported file in a local library. A stored file stays in the picker after a reload, and the picker lists it under **My MIDI files**.
+
+The bytes live in IndexedDB, keyed by the SHA-256 hash of the file. An import of the same bytes selects the stored copy instead of adding a duplicate. Nothing is uploaded to a server.
+
+The **Library** button lists the stored files. Each row shows the size, the note count and the last played date. A row offers Load, Rename and Delete. Delete needs a second click. A rename sets the title and the composer, and the picker shows the new name.
+
+- The app asks the browser to keep the library on the first import. The browser may refuse.
+- A full storage quota shows a message and keeps the stored files. The imported file still plays.
+- A private window may clear the library when it closes. A browser under storage pressure may also clear it.
+
 ### Sampled audio
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
 
@@ -150,7 +162,8 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 | Control | Action |
 |---|---|
 | Piece picker | Search the 18 built-in pieces by title or composer, then pick one. |
-| Load MIDI | Open any standard MIDI file from your disk. |
+| Load MIDI | Open any standard MIDI file from your disk. The file stays in the library. |
+| Library | List the stored files. Load, rename, or delete one. |
 | Play / Pause | Start or stop the performance. |
 | Seek slider | Move to any point in the piece. |
 | Speed slider | Set the tempo from 0.25x to 2x. |
@@ -187,6 +200,9 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/songs.js` | The built-in piece catalog. |
 | `src/songsearch.js` | Title and composer matching, ranking, and match ranges. No DOM import. |
 | `src/songpicker.js` | The combobox: popup, keyboard, ARIA state, and selection. |
+| `src/library.js` | Content hash, record shape, metadata, sort order, and quota test. No DOM import. |
+| `src/librarystore.js` | The IndexedDB store for the local library. |
+| `src/libraryui.js` | The My MIDI files dialog: rows, rename, and delete. |
 | `src/main.js` | App wiring and UI events. |
 
 ## Tests
@@ -195,7 +211,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-`npm test` runs six unit suites and the smoke test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
+`npm test` runs ten unit suites and the smoke test. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
 
 Regenerate the rig fixtures after changing an asset:
 
@@ -220,4 +236,5 @@ npm run fixtures
 - The rig hand spans about 158 mm, against about 193 mm for an adult hand. All 16 right-hand tenth stretches therefore miss their keys by more than 10 mm.
 - The resting thumb dips up to 7 mm below the key top on some pinky-only chords. The wrist cannot rise further without lifting the playing pinky off its key.
 - Skin is a single material with no texture maps. The mesh carries no nails, pores, or creases.
+- The local library depends on browser storage. A private window, or a browser under storage pressure, may remove it.
 - Recording uses the browser MediaRecorder API. Output is WebM. Some browsers may record video only if the audio tap is unavailable.
