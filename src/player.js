@@ -3,6 +3,7 @@ import * as MidiNS from '@tonejs/midi';
 import { assignFingering, markMelody } from './fingering.js';
 import { noteName, MIDI_MIN, MIDI_MAX } from './layout.js';
 import { collectPedals, pedalSpans, PedalState, PEDAL_ORDER } from './pedals.js';
+import { barTimes } from './score.js';
 
 const Midi = MidiNS.Midi || (MidiNS.default && MidiNS.default.Midi) || MidiNS.default;
 
@@ -38,6 +39,8 @@ export class Player {
     // fire it; pressing play again from the end does not either, because the
     // transport restarts from zero.
     this.onEnd = null;
+    // Fired once after a piece is ready, so a view can take the notes.
+    this.onLoad = null;
     this._buildAudio();
   }
 
@@ -73,11 +76,15 @@ export class Player {
     this.pedalSpans = pedalSpans(events, this.duration);
     this.pedalState = new PedalState(events);
     this.pedalsUsed = PEDAL_ORDER.filter((name) => this.pedalSpans[name].length);
+    // Bar lines come from the file's own time signatures and tempo map, so the
+    // sheet marks the bars that the score marks.
+    this.barlines = barTimes(midi.header, { duration: this.duration });
     this.title = title;
     this.bars.load(assigned, this.pedalSpans);
     this.hands.load(assigned);
     this.seek(0);
     this._emit();
+    if (this.onLoad) this.onLoad(this);
     return { notes: assigned.length, duration: this.duration, title, pedals: this.pedalsUsed };
   }
 

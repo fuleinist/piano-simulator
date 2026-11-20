@@ -31,6 +31,17 @@ The player lifts every pedal at the end of a piece, so the last chord rings out 
 
 Fifteen of the 18 built-in pieces carry the damper pedal. Three of them also carry the soft pedal, and the Nutcracker Andante carries all three pedals. The other three pieces carry no pedal event at all. The soft pedal changes the level only. A sampler cannot move its hammers, so the tone does not darken.
 
+### Sheet music
+A white paper band sits over the top of the stage and scrolls the piece past a fixed amber marker. The right hand takes the upper staff and the left hand takes the lower staff. A note outside its staff draws ledger lines. A note that sounds turns green.
+
+Bar lines come from the time signature and the tempo map of the file, so the bars follow a tempo change. The line spacing shrinks when the register is wide, so no note leaves the paper. The scroll speed follows the note density, so a fast passage keeps its notes apart.
+
+**Sheet music** in the Show section hides the paper, and the `M` key does the same. The paper shows at start.
+
+The paper is an HTML layer, not part of the WebGL scene. A recording captures the canvas only, so the paper hides while a capture runs and the file shows the stage alone.
+
+![Sheet music over the stage](docs/screenshots/score.png)
+
 ### Two rigged hands
 Each hand is a skinned mesh with 25 joints, the WebXR hand skeleton. The mesh comes from the `generic-hand` profile of the WebXR Input Profiles, which is the asset Three.js uses for hand tracking. A rig module poses the bones, and a contact solve places the wrist so the playing fingertips meet their keys.
 
@@ -187,6 +198,7 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 | Speed slider | Set the tempo from 0.25x to 2x. |
 | Loop | Repeat the piece when it ends. |
 | Pedal lane | Show or hide the pedal lanes. Press P to toggle them. |
+| Sheet music | Show or hide the score over the stage. Press M to toggle it. |
 | View buttons | Switch between top, perform, front, side, and close views. |
 | Mouse drag | Rotate the camera. |
 | Mouse wheel | Zoom in and out. |
@@ -213,6 +225,8 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/handrig.js` | Rig math: bind-pose calibration, finger pose, and key contact. No Three.js import. |
 | `src/player.js` | MIDI parsing, the Tone.js sampler, and the transport. |
 | `src/frames.js` | The two recording shapes and the fit maths. No Three.js import. |
+| `src/score.js` | Sheet layout: staff position, ledger lines, bar lines, and scroll speed. No DOM import. |
+| `src/scoreui.js` | The paper: the SVG view, the scroll blocks, and the note highlight. |
 | `src/recorder.js` | Canvas and audio capture to WebM. |
 | `src/framepreview.js` | The timed frame preview and its scrim. |
 | `src/songs.js` | The built-in piece catalog. |
@@ -234,7 +248,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-`npm test` runs twelve unit suites and the smoke test. The source test checks the licence labels, the result shape, the fan-out timeout, and the partial-failure rule. The proxy test checks the address allowlist, the origin check, the size cap, the rate limit, and the cache. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
+`npm test` runs thirteen unit suites and the smoke test. The source test checks the licence labels, the result shape, the fan-out timeout, and the partial-failure rule. The proxy test checks the address allowlist, the origin check, the size cap, the rate limit, and the cache. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The score test checks the staff position of a pitch, the ledger-line rule, the chord grouping, the bar-line times across a tempo change, and the page wiring. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. It also lays out the score of all 18 MIDIs and asserts that every note stays on the paper. All 18 pieces pass.
 
 Regenerate the rig fixtures after changing an asset:
 
