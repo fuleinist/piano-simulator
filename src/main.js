@@ -8,6 +8,11 @@ import { Recorder } from './recorder.js';
 import { FramePreview } from './framepreview.js';
 import { SONGS } from './songs.js';
 import { SongPicker } from './songpicker.js';
+import { LibraryStore, libraryAvailable } from './librarystore.js';
+import { LibraryPanel } from './libraryui.js';
+import {
+  buildRecord, contentId, displayName, isQuotaError, sortRecords, stripExtension, toEntry,
+} from './library.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage');
@@ -26,57 +31,231 @@ const preview = new FramePreview(scene, $('framePreview'));
 const RECORD_TAIL_S = 2;
 
 // --- Song library --------------------------------------------------------
-// Everything the picker lists is an entry with a stable id, so a built-in file,
-// a stored MIDI, and a remote result can share one code path. Today only the
-// built-in pieces exist.
+// Everything the picker lists is an entry with a stable id, so a built-in file
+// and a stored MIDI share one code path. A built-in reads its bytes from
+// /midi/<file>; a stored entry reads them from IndexedDB by content hash.
 const BUILTIN = SONGS.map((s) => ({
   id: `builtin:${s.file}`, kind: 'builtin', file: s.file, title: s.title, composer: s.composer,
 }));
 
+const store = new LibraryStore();
+let libraryReady = false;
+let records = [];          // stored records, most recently played first
+let currentEntry = null;   // the entry the player holds
+let persistAsked = false;
+
 const picker = new SongPicker({
   input: $('songSearch'),
   listbox: $('songListbox'),
-  onSelect: (item) => loadSong(item),
+  onSelect: (item) => loadEntry(item),
 });
 
-function renderPicker() {
-  picker.setGroups([{ label: 'Built-in', items: BUILTIN }]);
-}
-renderPicker();
+const panel = new LibraryPanel({
+  dialog: $('libraryDialog'),
+  list: $('libList'),
+  summary: $('libSummary'),
+  storage: $('libStorage'),
+  empty: $('libEmpty'),
+  onLoad: (key) => {
+    const record = records.find((r) => r.id === key);
+    if (record) loadEntry(toEntry(record));
+  },
+  onRename: (key, changes) => renameRecord(key, changes),
+  onDelete: (key) => deleteRecord(key),
+});
 
 // The pedals that the piece carries, for the song label. A piece with no
 // pedal events adds nothing.
 const pedalNote = (pedals) => (pedals && pedals.length ? ` · pedal: ${pedals.join(', ')}` : '');
 
-async function loadSong(song) {
-  $('loaderText').textContent = `Loading ${song.title}…`;
+function renderPicker() {
+  const groups = [{ label: 'Built-in', items: BUILTIN }];
+  if (records.length) groups.push({ label: 'My MIDI files', items: records.map(toEntry) });
+  picker.setGroups(groups);
+}
+
+async function refreshLibrary() {
+  if (libraryReady) {
+    try {
+      records = sortRecords(await store.list());
+    } catch (e) {
+      // A broken database must not take the app down: the built-in list still
+      // works, and the next import reports the failure.
+      libraryReady = false;
+      console.warn('The local library is unavailable:', e);
+    }
+  }
+  renderPicker();
+  panel.setRecords(records);
+}
+
+/**
+ * Load an entry, whether it is built in or stored. A stored file keeps the
+ * exact bytes that were imported, so it plays as it did on the first import.
+ */
+async function loadEntry(entry) {
+  currentEntry = entry;
+  picker.setSelection(entry.id);
+  $('loaderText').textContent = `Loading ${entry.title}…`;
   $('loader').classList.remove('hide');
   try {
-    const info = await player.loadSong(song);
+    const info = entry.kind === 'local'
+      ? await loadStored(entry)
+      : await player.loadSong(entry);
     $('songLabel').textContent = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)}`;
-    picker.setSelection(song.id);
   } catch (e) {
-    $('songLabel').textContent = 'Failed to load: ' + e.message;
+    $('songLabel').textContent = `Failed to load ${entry.title}: ${e.message}`;
   }
   maybeHideLoader();
 }
 
+async function loadStored(entry) {
+  const record = await store.get(entry.key);
+  if (!record) throw new Error('this file is no longer in your library');
+  const info = await player.loadBuffer(record.bytes, displayName(record));
+  // Recency drives the picker order, but it must not hold up playback.
+  store.touch(entry.key).then(refreshLibrary).catch(() => {});
+  return info;
+}
+
 $('loadBtn').addEventListener('click', () => $('fileInput').click());
+$('libraryBtn').addEventListener('click', async () => {
+  panel.open(records, libraryReady ? await store.estimate() : null);
+});
+$('libClose').addEventListener('click', () => panel.close());
+$('libDone').addEventListener('click', () => panel.close());
+$('libImport').addEventListener('click', () => {
+  panel.close();
+  $('fileInput').click();
+});
+
 $('fileInput').addEventListener('change', async (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  $('loaderText').textContent = `Loading ${f.name}…`;
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (files.length) await importFiles(files);
+});
+
+async function importFiles(files) {
+  const results = [];
+  for (const file of files) {
+    results.push(await importFile(file));
+  }
+  if (results.length > 1) {
+    const saved = results.filter((r) => r.saved).length;
+    $('songLabel').textContent = `${saved} of ${results.length} files saved to your library`;
+  }
+}
+
+/**
+ * Import one file: parse it, store it under its content hash, then play it.
+ * The parse comes first, so an invalid file never reaches the library.
+ */
+async function importFile(file) {
+  $('loaderText').textContent = `Loading ${file.name}…`;
   $('loader').classList.remove('hide');
   try {
-    const info = await player.loadFile(f);
-    $('songLabel').textContent = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)}`;
-    picker.clearSelection();
+    const bytes = await file.arrayBuffer();
+    const info = await player.loadBuffer(bytes, stripExtension(file.name));
+    const label = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)}`;
+
+    if (!libraryReady) {
+      currentEntry = null;
+      picker.clearSelection();
+      $('songLabel').textContent = `${label} · not saved, this browser has no local library`;
+      return { saved: false };
+    }
+
+    const id = await contentId(bytes);
+    const existing = await store.get(id);
+    if (existing) {
+      await store.touch(id);
+      const entry = toEntry(existing);
+      currentEntry = entry;
+      await refreshLibrary();
+      picker.setSelection(entry.id);
+      $('songLabel').textContent = `${label} · already in your library`;
+      return { saved: true };
+    }
+
+    const record = buildRecord({ id, name: file.name, bytes, info });
+    try {
+      await store.put(record);
+    } catch (err) {
+      if (!isQuotaError(err)) throw err;
+      currentEntry = null;
+      picker.clearSelection();
+      $('songLabel').textContent = `${label} · not saved, browser storage is full. Delete a file in Library and try again.`;
+      return { saved: false };
+    }
+
+    // Ask the browser to keep the library once, not on every import.
+    if (!persistAsked) {
+      persistAsked = true;
+      store.persist().catch(() => {});
+    }
+
+    const entry = toEntry(record);
+    currentEntry = entry;
+    await refreshLibrary();
+    picker.setSelection(entry.id);
+    $('songLabel').textContent = `${label} · saved to your library`;
+    return { saved: true };
   } catch (err) {
-    $('songLabel').textContent = 'Invalid MIDI: ' + err.message;
+    picker.clearSelection();
+    $('songLabel').textContent = `Invalid MIDI: ${err.message}`;
+    return { saved: false };
+  } finally {
+    maybeHideLoader();
   }
-  maybeHideLoader();
-  e.target.value = '';
-});
+}
+
+async function renameRecord(key, { title, composer }) {
+  try {
+    const record = await store.get(key);
+    if (!record) return;
+    await store.put({ ...record, title, composer });
+    if (currentEntry && currentEntry.key === key) {
+      currentEntry = { ...currentEntry, title, composer };
+      $('songLabel').textContent = `${displayName(currentEntry)} · ${player.notes.length} notes${pedalNote(player.pedalsUsed)}`;
+    }
+    await refreshLibrary();
+    picker.setSelection(currentEntry && currentEntry.key === key ? currentEntry.id : picker.selectedId);
+  } catch (e) {
+    console.warn('The rename failed:', e);
+  }
+}
+
+async function deleteRecord(key) {
+  const wasLoaded = currentEntry && currentEntry.kind === 'local' && currentEntry.key === key;
+  try {
+    await store.delete(key);
+  } catch (e) {
+    console.warn('The delete failed:', e);
+    return;
+  }
+  if (wasLoaded) {
+    player.pause();
+    currentEntry = null;
+    picker.clearSelection();
+    $('songLabel').textContent = 'That file was removed from your library';
+  }
+  await refreshLibrary();
+}
+
+async function initLibrary() {
+  if (!libraryAvailable()) {
+    renderPicker();
+    return;
+  }
+  try {
+    await store.open();
+    libraryReady = true;
+    await refreshLibrary();
+  } catch (e) {
+    console.warn('The local library is unavailable; imports play but are not kept.', e);
+    renderPicker();
+  }
+}
 
 function maybeHideLoader() {
   if (player.ready && player.notes.length) $('loader').classList.add('hide');
@@ -203,11 +382,16 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-// Boot: load the first piece, then reveal once samples are ready.
-loadSong(BUILTIN[0]).then(() => {
-  const wait = setInterval(() => { if (player.ready) { maybeHideLoader(); clearInterval(wait); } }, 120);
-});
+// Boot: open the library, load the first piece, then reveal once samples are ready.
+initLibrary()
+  .then(() => loadEntry(BUILTIN[0]))
+  .then(() => {
+    const wait = setInterval(() => { if (player.ready) { maybeHideLoader(); clearInterval(wait); } }, 120);
+  });
 frame();
 
 // Debug/test handle (harmless in production).
-window.__piano = { player, scene, piano, bars, hands, recorder, preview, THREE };
+window.__piano = {
+  player, scene, piano, bars, hands, recorder, preview, THREE, picker, store, panel,
+  library: () => ({ ready: libraryReady, records, currentEntry }),
+};

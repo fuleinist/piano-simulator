@@ -91,6 +91,30 @@ test('every test file runs under npm test', () => {
   }
 });
 
+test('the local library has a dialog and a persistent store', () => {
+  const button = html.match(/<button\b[^>]*\bid="libraryBtn"[^>]*>/);
+  assert.ok(button, 'index.html carries no #libraryBtn');
+  assert.equal(attr(button[0], 'aria-haspopup'), 'dialog', 'the button must announce the dialog');
+
+  const dialog = html.match(/<dialog\b[^>]*\bid="libraryDialog"[^>]*>/);
+  assert.ok(dialog, 'index.html carries no library dialog');
+  const labelled = attr(dialog[0], 'aria-labelledby');
+  assert.ok(labelled, 'the dialog needs a name');
+  assert.ok(html.includes(`id="${labelled}"`), 'aria-labelledby must name a real element');
+  assert.match(html, /<ul\b[^>]*\bid="libList"/, 'the dialog needs its list');
+  assert.match(html, /\bmultiple\b/, 'the file input should accept a batch');
+  assert.match(css, /\.lib-dialog\s*\{/, 'no .lib-dialog rule in styles.css');
+
+  // The bytes belong in IndexedDB: localStorage is string-only and near 5 MB.
+  const store = read('src/librarystore.js');
+  // The comment above the module explains the choice; this checks for a call.
+  for (const file of ['src/librarystore.js', 'src/library.js', 'src/libraryui.js', 'src/main.js']) {
+    assert.doesNotMatch(read(file), /localStorage\s*[.[]/, `${file} must not reach for localStorage`);
+  }
+  assert.match(store, /indexedDB\.open/, 'the library must open an IndexedDB database');
+  assert.match(read('src/library.js'), /crypto\.subtle\.digest/, 'imports must dedupe on a content hash');
+});
+
 test('the deploy publishes the build output', () => {
   assert.equal(wrangler.assets.directory, './dist', 'the Worker must serve dist/');
   // vite writes to dist/ unless vite.config.js says otherwise.

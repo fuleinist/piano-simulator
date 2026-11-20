@@ -110,6 +110,44 @@ select { max-width: 320px; min-width: 0; flex: 0 1 auto; }
 .cb-option mark { background: rgba(255,171,46,0.28); color: inherit; border-radius: 3px; }
 .cb-empty { padding: 12px 10px; font-size: 12px; color: var(--muted); }
 
+/* My MIDI files: the stored library, its sizes, and its rename/delete actions.
+   The dialog element supplies the backdrop, the focus trap and Escape. */
+.lib-dialog {
+  width: min(540px, calc(100vw - 24px)); max-height: min(78vh, 660px);
+  padding: 16px; border: 1px solid var(--border); border-radius: 16px;
+  background: rgba(12,15,24,0.98); color: var(--text);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+}
+.lib-dialog::backdrop { background: rgba(3,5,10,0.66); backdrop-filter: blur(2px); }
+.lib-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lib-head h2 { font-size: 15px; margin: 0; font-weight: 650; }
+.lib-summary { font-size: 12px; color: var(--muted); margin: 6px 0 10px; }
+.lib-list {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;
+  max-height: 46vh; overflow-y: auto; overscroll-behavior: contain;
+}
+.lib-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px; border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+}
+.lib-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.lib-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.lib-composer { font-size: 11px; color: var(--accent2); }
+.lib-meta { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lib-actions { display: flex; gap: 6px; flex: none; }
+.lib-actions .btn.small { flex: none; }
+.btn.danger { color: #ff8a8a; border-color: rgba(255,107,107,0.35); }
+.btn.danger.armed { background: rgba(255,60,60,0.22); color: #ff5c5c; border-color: rgba(255,60,60,0.8); }
+.lib-rename { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1 1 auto; }
+.lib-rename input {
+  flex: 1 1 120px; min-width: 0; padding: 6px 8px; font-family: inherit; font-size: 13px;
+  color: var(--text); background: rgba(0,0,0,0.35); border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.lib-rename input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lib-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; }
+
 #side {
   position: fixed; top: 76px; right: 14px; z-index: 10; width: 210px;
   display: flex; flex-direction: column; gap: 12px;
@@ -174,6 +212,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .combobox input { font-size: 16px; }
   .song-controls .combobox { width: auto; flex: 1 1 140px; }
   .cb-option { min-height: 48px; }
+  .lib-row { flex-wrap: wrap; }
+  .lib-actions { width: 100%; }
+  .lib-actions .btn.small { flex: 1 1 auto; }
 }
 
 /* On a narrow phone the brand and the controls cannot share one row, so the
