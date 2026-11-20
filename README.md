@@ -118,7 +118,37 @@ cd relay && npm install
 PORT=8088 ALLOWED_ORIGINS=https://piano-simulator.fuleinist.workers.dev npm start
 ```
 
-Without `VITE_RELAY_URL`, **Go live** stays disabled and nothing else changes. `relay/README.md` lists the settings. `docs/live-relay-deploy.md` gives the steps to host the relay and to set the address in the deploy.
+Without `VITE_RELAY_URL`, **Go live** stays disabled and nothing else changes. `relay/README.md` lists the settings.
+
+#### Run the relay on your own machine
+
+One command starts the relay and a Cloudflare quick tunnel. It also prints the two commands that put the address on the site:
+
+```bash
+npm run live
+```
+
+```text
+Route A preflight
+  ok    Node 26 (needs 20 or newer)
+  ok    ffmpeg has libx264 and aac
+  ok    cloudflared is on PATH
+  ok    port 8088 is free
+  ok    site origin https://piano-simulator.fuleinist.workers.dev
+
+The tunnel is up. The site needs this value:
+
+  VITE_RELAY_URL=wss://random-words.trycloudflare.com
+
+Run these two commands:
+
+  gh variable set VITE_RELAY_URL --body "wss://random-words.trycloudflare.com"
+  gh workflow run deploy.yml
+```
+
+The tunnel needs no domain and no card. The address changes on each restart, so run the two printed commands again. Leave the terminal open while you stream, and keep the machine awake.
+
+A hosted relay, or an address that stays the same, needs more steps. `docs/live-relay-deploy.md` covers both.
 
 | Platform | Ingest |
 |---|---|

@@ -19,6 +19,18 @@ The account has no domain in Cloudflare. A named tunnel needs a zone, so this do
 
 This option costs nothing. The PC must stay on while you stream. The address changes each time the tunnel restarts, so you must update the variable and redeploy.
 
+### Faster: one command
+
+Run this in the repository root:
+
+```bash
+npm run live
+```
+
+The script checks Node, ffmpeg with `libx264` and `aac`, `cloudflared`, the port, and the site origin. Then it starts the relay and the tunnel, and prints the value with the two commands that follow. The steps below show what the script does, for the case where you run each part by hand.
+
+### By hand
+
 1. Install the tunnel client if it is missing: `winget install --id Cloudflare.cloudflared`
 2. Start the relay in a terminal and leave it open:
 
