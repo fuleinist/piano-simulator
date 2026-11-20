@@ -31,6 +31,37 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; co
   box-shadow: 0 0 0 100vmax rgba(3,5,10,0.62);
 }
 
+/* Sheet music: a white paper band over the top of the stage. The paper is 60%
+   transparent, so the falling note bars stay visible behind it. The ink
+   keeps full opacity, which keeps the notes readable on the dimmed paper. It
+   takes no pointer events, so a drag on the paper still orbits the camera. The
+   right edge stops short of the side panel, the same way the transport does. */
+#score {
+  --paper: rgba(252, 252, 250, 0.4);
+  --ink: #1b2029;
+  --ink-soft: #aeb6c4;
+  --note: #17a673;
+  position: fixed; z-index: 6;
+  top: var(--score-top, 76px); left: 14px; right: 238px;
+  pointer-events: none; overflow: hidden;
+  border-radius: 12px; background: var(--paper);
+  box-shadow: 0 18px 44px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.12);
+}
+#score[hidden] { display: none; }
+#score svg { display: block; width: 100%; height: auto; }
+.sc-line { stroke: #cdd3dd; stroke-width: 1; }
+.sc-bar { stroke: var(--ink-soft); stroke-width: 1; }
+.sc-ledger { stroke: var(--ink); stroke-width: 1; }
+.sc-bracket { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.sc-clef { fill: var(--ink); font-family: "Bravura", "Segoe UI Symbol", "Noto Music", serif; }
+.sc-acc { fill: var(--ink); font-family: "Segoe UI Symbol", serif; }
+.sc-head { fill: var(--ink); }
+.sc-head.on { fill: var(--note); }
+.sc-stem { stroke: var(--ink); stroke-width: 1.6; }
+.sc-stem.on { stroke: var(--note); }
+.sc-playhead { stroke: var(--accent); stroke-width: 1.5; }
+.sc-playhead-glow { stroke: var(--accent); stroke-width: 10; opacity: 0.18; }
+
 #topbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
@@ -269,6 +300,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
      The button opens it, the scrim behind it closes it, and the sheet scrolls
      when the sections are taller than the window. */
   #panelBtn { display: grid; }
+  /* The panel is a sheet here, so the paper may use the full width. */
+  #score { left: 12px; right: 12px; border-radius: 10px; }
   #side {
     top: auto; bottom: 0; left: 0; right: 0; width: auto; z-index: 21;
     display: none; gap: 0;

@@ -8,6 +8,7 @@ import { assignFingering, markMelody, CHORD_WINDOW } from '../src/fingering.js';
 import { keyX, isBlack, noteName, midiFromName, MIDI_MIN, MIDI_MAX, WHITE_COUNT } from '../src/layout.js';
 import { PRESETS } from '../src/scene.js';
 import { collectPedals, pedalSpans, PEDAL_ORDER } from '../src/pedals.js';
+import { MAX_GAP, MIN_GAP, barTimes, layoutScore } from '../src/score.js';
 
 const dir = path.resolve('public/midi');
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.mid'));
@@ -92,13 +93,42 @@ for (const f of files) {
   }
   if (badPedal) fail(`${f}: ${badPedal} bad pedal spans`);
 
+  // Sheet-music check. Every note must land on the paper, every bar line must
+  // sit inside the piece and after the one before it, and the bar lines must
+  // agree with the tempo map that the MIDI reader already applied to the notes.
+  const bars = barTimes(midi.header, { duration: endTime });
+  const layout = layoutScore(assigned, { bars, width: 1200, maxHeight: 190 });
+  let badSheet = 0;
+  if (!bars.length || bars[0] !== 0) badSheet++;
+  for (let i = 1; i < bars.length; i++) if (!(bars[i] > bars[i - 1])) badSheet++;
+  if (!(layout.gap >= MIN_GAP && layout.gap <= MAX_GAP)) badSheet++;
+  let heads = 0;
+  for (const glyph of layout.glyphs) {
+    if (!Number.isFinite(glyph.x) || !glyph.heads.length) badSheet++;
+    for (const head of glyph.heads) {
+      heads++;
+      if (!(head.y >= 0 && head.y <= layout.height)) badSheet++;
+    }
+    if (glyph.stem && !(Number.isFinite(glyph.stem.y1) && Number.isFinite(glyph.stem.y2))) badSheet++;
+  }
+  if (heads !== assigned.length) badSheet++;
+  const sigs = midi.header.timeSignatures;
+  if (sigs.length === 1 && bars.length > 5) {
+    const [beats, unit] = sigs[0].timeSignature;
+    const ticksPerBar = (midi.header.ppq * 4 * beats) / unit;
+    const expected = midi.header.ticksToSeconds(sigs[0].ticks + 5 * ticksPerBar);
+    if (Math.abs(bars[5] - expected) > 1e-6) badSheet++;
+  }
+  if (badSheet) fail(`${f}: ${badSheet} sheet-layout faults`);
+
   const melody = assigned.filter((n) => n.melody).length;
   console.log(
     `${f.padEnd(26)} notes=${String(notes.length).padStart(5)} ` +
     `L=${String(lh).padStart(4)} R=${String(rh).padStart(4)} ` +
     `melody=${String(melody).padStart(4)} dur=${midi.duration.toFixed(1)}s ` +
-    `pedals=${used.join(' ') || 'none'}` +
-    (badFinger || badWrist || bigSpan || badPedal ? '  [FAIL]' : '  OK')
+    `pedals=${used.join(' ') || 'none'} ` +
+    `sheet=${layout.glyphs.length}g/${bars.length}b gap=${layout.gap.toFixed(2)}` +
+    (badFinger || badWrist || bigSpan || badPedal || badSheet ? '  [FAIL]' : '  OK')
   );
 }
 

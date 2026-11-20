@@ -6,6 +6,7 @@ import { Hands } from './hands.js';
 import { Player } from './player.js';
 import { Recorder } from './recorder.js';
 import { FramePreview } from './framepreview.js';
+import { ScoreView } from './scoreui.js';
 import { SONGS } from './songs.js';
 import { SongPicker } from './songpicker.js';
 import { LibraryStore, libraryAvailable } from './librarystore.js';
@@ -26,6 +27,13 @@ const hands = new Hands(scene.scene);
 const player = new Player(piano, bars, hands);
 const recorder = new Recorder(canvas, scene);
 const preview = new FramePreview(scene, $('framePreview'));
+const score = new ScoreView({ root: $('score'), svg: $('scoreSvg') });
+
+// The paper takes the notes of every piece the player loads, and the bar lines
+// that the file's own time signatures define.
+player.onLoad = (p) => score.setSong({ notes: p.notes, bars: p.barlines });
+// The toggle starts checked, so the paper starts on screen.
+score.setVisible($('scoreToggle').checked);
 
 // How long the recorder keeps rolling after the piece ends, in seconds. The
 // sampler releases the final chord over about a second, so an instant stop
@@ -347,6 +355,7 @@ $('volume').addEventListener('input', (e) => { player.gain.gain.value = parseFlo
 $('handsToggle').addEventListener('change', (e) => hands.setVisible(e.target.checked));
 $('barsToggle').addEventListener('change', (e) => bars.setVisible(e.target.checked));
 $('pedalsToggle').addEventListener('change', (e) => bars.setPedalsVisible(e.target.checked));
+$('scoreToggle').addEventListener('change', (e) => score.setVisible(e.target.checked));
 
 // --- View ----------------------------------------------------------------
 document.querySelectorAll('[data-view]').forEach((b) => {
@@ -368,6 +377,9 @@ recorder.onState = (r) => {
   b.textContent = r.recording ? '■ Stop recording' : '● Record video';
   // The shape cannot change while a capture runs, so lock the buttons.
   document.querySelectorAll('[data-frame]').forEach((x) => { x.disabled = r.recording; });
+  // A capture holds the canvas only, so the paper must not claim a place in
+  // the file. It comes back as soon as the capture stops.
+  score.setRecording(r.recording);
   if (r.stopping) $('recHint').textContent = 'Finishing the last chord…';
   else if (r.recording) $('recHint').textContent = `Recording ${recorder.frame}. Press Stop to save now.`;
   else $('recHint').textContent = 'Saves a WebM with audio. Stops when the piece ends.';
@@ -408,6 +420,7 @@ window.addEventListener('keydown', (e) => {
     case 'Equal': case 'NumpadAdd': scene.zoomBy(0.8); break;
     case 'Minus': case 'NumpadSubtract': scene.zoomBy(1.25); break;
     case 'KeyL': $('loopToggle').checked = player.loop = !player.loop; break;
+    case 'KeyM': $('scoreToggle').checked = !$('scoreToggle').checked; score.setVisible($('scoreToggle').checked); break;
     case 'KeyP': $('pedalsToggle').checked = !$('pedalsToggle').checked; bars.setPedalsVisible($('pedalsToggle').checked); break;
     case 'KeyR': preview.clear(); recorder.toggle(); break;
     case 'Digit1': scene.setPreset('top'); break;
@@ -443,10 +456,20 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('resize', () => {
   scene.resize();
   preview.refresh();
+  sizePaper();
   // A rotation to a wide window shows the panel in the corner, so the sheet
   // must not leave its scrim behind.
   if (sheetOpen() && window.innerWidth > 720) setSheet(false);
 });
+
+// The paper sits under the header, whose height changes with the layout. The
+// measured edge keeps the paper clear of it at every width.
+function sizePaper() {
+  const top = $('topbar').getBoundingClientRect().bottom;
+  document.documentElement.style.setProperty('--score-top', `${Math.round(top + 8)}px`);
+  score.resize();
+}
+sizePaper();
 
 // --- Main loop -----------------------------------------------------------
 const clock = new THREE.Clock();
@@ -457,6 +480,7 @@ function frame() {
   scene.setFocus(hands.centerX());
   scene.update(dt);
   piano.update(dt);
+  score.update(player.time);
   scene.render();
   if (!seeking && player.duration) {
     $('seek').value = Math.round((player.time / player.duration) * 1000);
@@ -483,6 +507,6 @@ frame();
 
 // Debug/test handle (harmless in production).
 window.__piano = {
-  player, scene, piano, bars, hands, recorder, preview, THREE, picker, store, panel, search,
+  player, scene, piano, bars, hands, recorder, preview, score, THREE, picker, store, panel, search,
   library: () => ({ ready: libraryReady, records, currentEntry }),
 };
