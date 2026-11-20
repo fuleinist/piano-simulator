@@ -35,20 +35,40 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; co
   pointer-events: none;
 }
 #topbar > * { pointer-events: auto; }
-.brand { display: flex; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .logo { width: 34px; height: 34px; display: block; border-radius: 8px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08); }
 .brand h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: 0.2px; }
 .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); max-width: 46vw;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.song-controls { display: flex; gap: 8px; align-items: center; }
+.brand > div { min-width: 0; }
+/* The header has to hold the brand, the song controls, and the repository link
+   on one row at every width, so the parts that can shrink do: the title, the
+   piece menu, and the box around them. The logo, the buttons, and the link keep
+   their size, which keeps the link on screen. */
+.song-controls { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.song-controls .btn { flex: none; white-space: nowrap; }
+.top-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* The repository link sits at the top right, level with the song controls and
+   the same height as a button, so the header keeps one row of equal-height
+   controls. */
+.icon-link {
+  display: grid; place-items: center; width: 34px; height: 34px; flex: none;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); backdrop-filter: blur(12px); text-decoration: none;
+  transition: color .15s, border-color .15s, transform .05s;
+}
+.icon-link:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }
+.icon-link:active { transform: translateY(1px); }
+.icon-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.icon-link svg { display: block; }
 
 select, .btn {
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
   border-radius: 10px; padding: 8px 12px; font-size: 13px; cursor: pointer;
   backdrop-filter: blur(12px); transition: border-color .15s, background .15s, transform .05s;
 }
-select { max-width: 320px; }
+select { max-width: 320px; min-width: 0; flex: 0 1 auto; }
 .btn:hover { border-color: rgba(255,255,255,0.25); }
 .btn:active { transform: translateY(1px); }
 .btn.small { padding: 7px 10px; font-size: 12px; flex: 1; }
