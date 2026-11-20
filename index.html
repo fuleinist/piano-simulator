@@ -24,7 +24,12 @@
     </div>
     <div class="top-right">
       <div class="song-controls">
-        <select id="songSelect" aria-label="Song"></select>
+        <div class="combobox" id="songPicker">
+          <input id="songSearch" type="text" role="combobox" aria-label="Song" placeholder="Search pieces…"
+                 aria-expanded="false" aria-controls="songListbox" aria-autocomplete="list"
+                 autocomplete="off" spellcheck="false" />
+          <div id="songListbox" class="cb-list" role="listbox" aria-label="Pieces" hidden></div>
+        </div>
         <button id="loadBtn" class="btn">Load MIDI</button>
         <input id="fileInput" type="file" accept=".mid,.midi" hidden />
       </div>

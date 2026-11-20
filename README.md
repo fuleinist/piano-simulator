@@ -51,7 +51,13 @@ A fingering engine assigns the fingers. It groups notes into chords, splits them
 The original primitive hands remain as a fallback. Add `?hands=procedural` to the URL to use them, or `?hands=debug` to draw the skeletons.
 
 ### Selectable music
-The menu lists 18 famous pieces. You can also load any standard MIDI file from your disk. The player parses the file, splits the notes between the hands, and marks the melody.
+The picker lists 18 famous pieces. You can also load any standard MIDI file from your disk. The player parses the file, splits the notes between the hands, and marks the melody.
+
+The picker is a searchable combobox. Type part of a title or a composer to filter the list. Matching ignores case and accents, so `fur elise` finds Für Elise and `pathetique` finds Pathétique. A query with more than one word needs every word to match, so `chopin nocturne` narrows the list rather than widening it. A title match ranks above a composer match, and a match at the start of the title ranks above a match in the middle. The matched text is marked in the list.
+
+The keyboard drives the picker: the arrow keys move through the list, Home and End jump to either end, Enter loads the highlighted piece, and Escape closes the list and restores the current piece. Selecting the piece that is already loaded restarts it from the beginning.
+
+No keyboard shortcut fires while the picker has focus, so Space, `L`, `P`, `R` and `1`–`5` type into the search field instead of changing the view or the transport.
 
 ### Sampled audio
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
@@ -143,7 +149,7 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 
 | Control | Action |
 |---|---|
-| Piece menu | Select one of 18 built-in pieces. |
+| Piece picker | Search the 18 built-in pieces by title or composer, then pick one. |
 | Load MIDI | Open any standard MIDI file from your disk. |
 | Play / Pause | Start or stop the performance. |
 | Seek slider | Move to any point in the piece. |
@@ -179,6 +185,8 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/recorder.js` | Canvas and audio capture to WebM. |
 | `src/framepreview.js` | The timed frame preview and its scrim. |
 | `src/songs.js` | The built-in piece catalog. |
+| `src/songsearch.js` | Title and composer matching, ranking, and match ranges. No DOM import. |
+| `src/songpicker.js` | The combobox: popup, keyboard, ARIA state, and selection. |
 | `src/main.js` | App wiring and UI events. |
 
 ## Tests

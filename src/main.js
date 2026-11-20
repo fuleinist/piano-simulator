@@ -7,6 +7,7 @@ import { Player } from './player.js';
 import { Recorder } from './recorder.js';
 import { FramePreview } from './framepreview.js';
 import { SONGS } from './songs.js';
+import { SongPicker } from './songpicker.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage');
@@ -25,13 +26,23 @@ const preview = new FramePreview(scene, $('framePreview'));
 const RECORD_TAIL_S = 2;
 
 // --- Song library --------------------------------------------------------
-const sel = $('songSelect');
-for (const s of SONGS) {
-  const o = document.createElement('option');
-  o.value = s.file;
-  o.textContent = `${s.title} — ${s.composer}`;
-  sel.appendChild(o);
+// Everything the picker lists is an entry with a stable id, so a built-in file,
+// a stored MIDI, and a remote result can share one code path. Today only the
+// built-in pieces exist.
+const BUILTIN = SONGS.map((s) => ({
+  id: `builtin:${s.file}`, kind: 'builtin', file: s.file, title: s.title, composer: s.composer,
+}));
+
+const picker = new SongPicker({
+  input: $('songSearch'),
+  listbox: $('songListbox'),
+  onSelect: (item) => loadSong(item),
+});
+
+function renderPicker() {
+  picker.setGroups([{ label: 'Built-in', items: BUILTIN }]);
 }
+renderPicker();
 
 // The pedals that the piece carries, for the song label. A piece with no
 // pedal events adds nothing.
@@ -43,12 +54,12 @@ async function loadSong(song) {
   try {
     const info = await player.loadSong(song);
     $('songLabel').textContent = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)}`;
+    picker.setSelection(song.id);
   } catch (e) {
     $('songLabel').textContent = 'Failed to load: ' + e.message;
   }
   maybeHideLoader();
 }
-sel.addEventListener('change', () => loadSong(SONGS.find((s) => s.file === sel.value)));
 
 $('loadBtn').addEventListener('click', () => $('fileInput').click());
 $('fileInput').addEventListener('change', async (e) => {
@@ -59,7 +70,7 @@ $('fileInput').addEventListener('change', async (e) => {
   try {
     const info = await player.loadFile(f);
     $('songLabel').textContent = `${info.title} · ${info.notes} notes${pedalNote(info.pedals)}`;
-    sel.value = '';
+    picker.clearSelection();
   } catch (err) {
     $('songLabel').textContent = 'Invalid MIDI: ' + err.message;
   }
@@ -137,8 +148,17 @@ player.onEnd = () => {
 };
 
 // --- Keyboard ------------------------------------------------------------
+// No shortcut may fire while the player is typing in a field or picking a
+// piece. The song picker keeps its own keys (arrows, Home/End, Enter, Escape)
+// on the input, so the guard covers the whole combobox, not just <input>.
+const isTypingTarget = (target) => {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return true;
+  return target.closest('#songPicker') !== null;
+};
+
 window.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (isTypingTarget(e.target)) return;
   switch (e.code) {
     case 'Space': e.preventDefault(); player.toggle(); break;
     case 'ArrowLeft': scene.panBy(-3); break;
@@ -184,7 +204,7 @@ function frame() {
 }
 
 // Boot: load the first piece, then reveal once samples are ready.
-loadSong(SONGS[0]).then(() => {
+loadSong(BUILTIN[0]).then(() => {
   const wait = setInterval(() => { if (player.ready) { maybeHideLoader(); clearInterval(wait); } }, 120);
 });
 frame();
