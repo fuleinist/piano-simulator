@@ -162,6 +162,38 @@ select { max-width: 320px; min-width: 0; flex: 0 1 auto; }
 .search-dialog .lib-meta a:hover { text-decoration: underline; }
 .search-dialog .lib-foot .hint { margin: 0; }
 
+/* Live: the sidebar button, the on-air badge, and the settings dialog. The
+   badge sits in the top layer of the page, so an on-air stream is visible
+   whatever the player is doing. */
+.btn.live { width: 100%; color: #ff5b7f; border-color: rgba(255, 91, 127, 0.4); }
+.btn.live.on { background: rgba(255, 60, 60, 0.2); color: #ff4d4d; animation: pulse 1.2s infinite; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+#liveBadge {
+  position: fixed; z-index: 40; top: 12px; left: 50%; transform: translateX(-50%);
+  padding: 6px 14px; border-radius: 999px; pointer-events: none;
+  font-size: 12px; font-weight: 700; letter-spacing: 1px; color: #fff;
+  background: rgba(220, 38, 38, 0.94); box-shadow: 0 6px 24px rgba(220, 38, 38, 0.35);
+}
+.live-dialog { width: min(480px, calc(100vw - 24px)); }
+.live-form { display: flex; flex-direction: column; gap: 6px; }
+.live-form label {
+  margin-top: 6px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted);
+}
+.live-form input, .live-form select {
+  width: 100%; padding: 8px 10px; font-family: inherit; font-size: 13px; color: var(--text);
+  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); border-radius: 10px;
+}
+.live-form input[readonly] { color: var(--muted); }
+.live-form input:focus-visible, .live-form select:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.key-row { display: flex; gap: 6px; }
+.key-row input { flex: 1 1 auto; min-width: 0; }
+.key-row .btn.small { flex: none; }
+.live-confirm { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.live-confirm p { margin: 0 0 10px; font-size: 13px; line-height: 1.45; }
+
 #side {
   position: fixed; top: 76px; right: 14px; z-index: 10; width: 210px;
   display: flex; flex-direction: column; gap: 12px;
@@ -230,6 +262,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .lib-actions { width: 100%; }
   .lib-actions .btn.small { flex: 1 1 auto; }
   .search-form input { font-size: 16px; }
+  .live-form input, .live-form select { font-size: 16px; }
 }
 
 /* On a narrow phone the brand and the controls cannot share one row, so the

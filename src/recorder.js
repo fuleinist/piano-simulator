@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import { captureStream, releaseCapture } from './capture.js';
 import { DEFAULT_FRAME, FRAMES } from './frames.js';
 
 // Records the canvas plus the mixed audio to a downloadable WebM video.
@@ -31,18 +31,10 @@ export class Recorder {
     // Set the frame before capture starts, so no saved frame has the window
     // shape.
     this.scene.setFrame(frame);
-    const stream = this.canvas.captureStream(60);
-    try {
-      const ctx = Tone.getContext().rawContext;
-      const dest = ctx.createMediaStreamDestination();
-      Tone.getDestination().connect(dest);
-      for (const track of dest.stream.getAudioTracks()) stream.addTrack(track);
-      this._audioDest = dest;
-    } catch (e) {
-      console.warn('Audio capture unavailable, recording video only.', e);
-    }
+    // The streamer builds the same capture, so both share one helper.
+    this._capture = captureStream(this.canvas, { fps: 60 });
     this.chunks = [];
-    this.rec = new MediaRecorder(stream, { mimeType: this._mime(), videoBitsPerSecond: 12_000_000 });
+    this.rec = new MediaRecorder(this._capture.stream, { mimeType: this._mime(), videoBitsPerSecond: 12_000_000 });
     this.rec.ondataavailable = (e) => { if (e.data.size) this.chunks.push(e.data); };
     this.rec.onstop = () => this._save();
     this.rec.start(250);
@@ -89,7 +81,8 @@ export class Recorder {
     a.download = `piano-${shape}-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    if (this._audioDest) { try { Tone.getDestination().disconnect(this._audioDest); } catch {} }
+    releaseCapture(this._capture);
+    this._capture = null;
     // The capture is complete, so the stage can take the window shape again.
     this.scene.setFrame(null);
   }
