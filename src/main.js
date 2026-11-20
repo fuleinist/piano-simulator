@@ -431,10 +431,35 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// --- Controls sheet ------------------------------------------------------
+// A narrow screen has no room for the side panel, so the panel opens as a
+// sheet over the stage. The Controls button and the scrim both toggle it, and
+// Escape closes it. A wide screen ignores the state: the panel is always open.
+const sidePanel = $('side');
+const panelBtn = $('panelBtn');
+const panelScrim = $('panelScrim');
+const sheetOpen = () => sidePanel.dataset.open === 'true';
+
+function setSheet(open) {
+  sidePanel.dataset.open = String(open);
+  panelBtn.setAttribute('aria-expanded', String(open));
+  panelScrim.hidden = !open;
+}
+
+panelBtn.addEventListener('click', () => setSheet(!sheetOpen()));
+$('panelClose').addEventListener('click', () => setSheet(false));
+panelScrim.addEventListener('click', () => setSheet(false));
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && sheetOpen()) setSheet(false);
+});
+
 window.addEventListener('resize', () => {
   scene.resize();
   preview.refresh();
   sizePaper();
+  // A rotation to a wide window shows the panel in the corner, so the sheet
+  // must not leave its scrim behind.
+  if (sheetOpen() && window.innerWidth > 720) setSheet(false);
 });
 
 // The paper sits under the header, whose height changes with the layout. The

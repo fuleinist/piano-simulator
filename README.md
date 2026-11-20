@@ -135,6 +135,14 @@ All images show the first piece at about 59 seconds. Both hands play a three-not
 | Hands on the keys | ![Both hands on the keys](docs/screenshots/hands.png) |
 | Hands from a low angle | ![Hands from a low angle](docs/screenshots/hands-side.png) |
 
+### Phone and tablet
+
+| Phone, 390 by 844 | Tablet, 768 by 1024 |
+|---|---|
+| <img src="docs/screenshots/phone.png" width="260" alt="Phone layout at 390 by 844" /> | <img src="docs/screenshots/tablet.png" width="360" alt="Tablet layout at 768 by 1024" /> |
+
+On a phone the header takes three rows and the transport takes two, so the seek bar keeps a width of its own. On a tablet the panel stays in the right corner, and every control takes a 44px target.
+
 ## Stack
 
 | Library | Version | Role |
@@ -207,6 +215,14 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 | Record | Save a WebM video with audio. The recording stops when the piece ends. |
 | `?hands=procedural` | Use the primitive hands instead of the rigged mesh. |
 | `?hands=debug` | Draw the hand skeletons over the mesh. |
+
+### On a phone
+
+A narrow screen shows the panel as a sheet, so every control stays reachable. **Controls** opens the sheet. A tap on the dimmed stage closes it, and so does Escape. The sheet scrolls, so the Record section stays reachable on a short screen.
+
+The header stacks in three rows: the brand, the piece picker, and the file buttons. The transport takes two rows, so the seek bar keeps a width of its own. Every button is at least 44px tall, which is the size a thumb can hit.
+
+A phone held sideways keeps the panel in the corner. The panel scrolls inside its own box, so the last section stays on the screen.
 
 ## Architecture
 
