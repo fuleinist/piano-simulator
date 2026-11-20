@@ -106,6 +106,37 @@ The frame changes the shape of the stage, and nothing else. The camera stays whe
 
 A recording stops by itself when the piece ends. It keeps rolling for 2 seconds after the last note, so the final chord and its room tone stay in the file. Press Stop to end a recording early. The loop toggle cancels the automatic stop, because a looped piece never ends.
 
+### Live streaming
+
+**Go live** streams the performance to YouTube, Twitch, Facebook, or a custom RTMP address. A browser cannot open an RTMP socket, so the page records WebM and sends it over a WebSocket to a small relay. The relay transcodes with ffmpeg and pushes FLV to the platform.
+
+The relay is a separate process in `relay/`. Build the site with its address:
+
+```bash
+VITE_RELAY_URL=wss://relay.example.com npm run build
+cd relay && npm install
+PORT=8088 ALLOWED_ORIGINS=https://piano-simulator.fuleinist.workers.dev npm start
+```
+
+Without `VITE_RELAY_URL`, **Go live** stays disabled and nothing else changes. `relay/README.md` lists the settings.
+
+| Platform | Ingest |
+|---|---|
+| YouTube | `rtmp://a.rtmp.youtube.com/live2` |
+| Twitch | `rtmp://live.twitch.tv/app/` |
+| Facebook | `rtmps://live-api-s.facebook.com:443/rtmp/` |
+| TikTok | Region-specific, best effort. LIVE access needs about 1,000 followers. |
+| Instagram | Professional accounts only. Best effort. |
+| Custom | Any RTMP or RTMPS address. |
+
+The stream key gets four protections. It lives in memory for the session only. The app clears the field on start and clears its copy on stop. Nothing writes it to storage or a log, and the status line shows `rtmp://host/path/***`. ffmpeg receives the ingest as an argument array, so no shell parses it. A relay on plain `ws://` is refused unless it runs on this machine.
+
+Video is 1080p30 at 4.5 Mbps, 720p30 at 2.5 Mbps, or 720p60 at 3.5 Mbps. The relay always transcodes, because the browser records VP8 or VP9 with Opus and RTMP needs H.264 with AAC.
+
+The stream stops when the piece ends, after the same 2-second tail as a recording. A dropped connection retries twice, after 1 and 2 seconds.
+
+Audio needs a started audio context. Press Play once before **Go live**, or the browser holds the context suspended and the stream carries video only.
+
 ## Screenshots
 
 All images show the first piece at about 59 seconds. Both hands play a three-note chord at that moment.
@@ -189,6 +220,8 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 | Right drag | Move the view left and right along the keys. |
 | Frame buttons (16:9, 9:16) | Set the shape of the video. The stage shows the frame for 6 seconds. |
 | Record | Save a WebM video with audio. The recording stops when the piece ends. |
+| Go live | Stream to a platform through the relay. Stops when the piece ends. |
+| Stream key | Held in memory for the session. The app never saves it or shows it again. |
 | `?hands=procedural` | Use the primitive hands instead of the rigged mesh. |
 | `?hands=debug` | Draw the hand skeletons over the mesh. |
 
@@ -210,6 +243,12 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/player.js` | MIDI parsing, the Tone.js sampler, and the transport. |
 | `src/frames.js` | The two recording shapes and the fit maths. No Three.js import. |
 | `src/recorder.js` | Canvas and audio capture to WebM. |
+| `src/capture.js` | The shared canvas and audio capture for a recording or a stream. |
+| `src/streamer.js` | The live session: relay socket, chunks, retries, and key handling. |
+| `src/streamstate.js` | The session state machine and the retry backoff. No DOM import. |
+| `src/streampresets.js` | Platform and quality presets, target joining, and redaction. No DOM import. |
+| `relay/ffmpeg.js` | The ffmpeg command for one stream. No dependencies. |
+| `relay/server.js` | The WebSocket relay: origin check, session cap, and duration limit. |
 | `src/framepreview.js` | The timed frame preview and its scrim. |
 | `src/songs.js` | The built-in piece catalog. |
 | `src/songsearch.js` | Title and composer matching, ranking, and match ranges. No DOM import. |
@@ -230,7 +269,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-`npm test` runs twelve unit suites and the smoke test. The source test checks the licence labels, the result shape, the fan-out timeout, and the partial-failure rule. The proxy test checks the address allowlist, the origin check, the size cap, the rate limit, and the cache. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
+`npm test` runs fifteen unit suites and the smoke test. The stream tests check the session states, the retry backoff, the ingest joining, and the key redaction. The relay test checks the ffmpeg command and its guard rails. The source test checks the licence labels, the result shape, the fan-out timeout, and the partial-failure rule. The proxy test checks the address allowlist, the origin check, the size cap, the rate limit, and the cache. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
 
 Regenerate the rig fixtures after changing an asset:
 
@@ -255,6 +294,8 @@ npm run fixtures
 - The rig hand spans about 158 mm, against about 193 mm for an adult hand. All 16 right-hand tenth stretches therefore miss their keys by more than 10 mm.
 - The resting thumb dips up to 7 mm below the key top on some pinky-only chords. The wrist cannot rise further without lifting the playing pinky off its key.
 - Skin is a single material with no texture maps. The mesh carries no nails, pores, or creases.
+- Live streaming needs the relay and a started audio context. A static host alone cannot stream.
+- TikTok and Instagram gate live access by account and region, so those presets stay best effort.
 - The remote search needs the Worker route for a download. A plain static host serves the search but not the files.
 - The Internet Archive metadata is user-contributed. A result may be a poor rendition of the piece its title names.
 - The local library depends on browser storage. A private window, or a browser under storage pressure, may remove it.
