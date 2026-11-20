@@ -6,8 +6,8 @@
 // captures the canvas only, so the view hides the paper while a capture runs.
 
 import {
-  BASS, BASS_MID_STEP, HEAD_RX, HEAD_RY, PAD, TREBLE, TREBLE_MID_STEP,
-  layoutScore, staffTopStep,
+  BASS, BASS_MID_STEP, HEAD_RX, HEAD_RY, TREBLE, TREBLE_MID_STEP,
+  layoutScore,
 } from './score.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -114,7 +114,7 @@ export class ScoreView {
 
   _build() {
     const width = Math.max(260, Math.round(this.root.clientWidth || window.innerWidth * 0.7));
-    const maxHeight = Math.min(200, Math.max(96, window.innerHeight * 0.26));
+    const maxHeight = Math.min(216, Math.max(96, window.innerHeight * 0.28));
     const layout = layoutScore(this.notes, { bars: this.bars, width, maxHeight });
     this.layout = layout;
     this._clear();
@@ -162,19 +162,21 @@ export class ScoreView {
       SVG('rect', { x: 0, y: 0, width, height, fill: 'url(#sc-gutter)' }),
     );
 
-    const yOf = (step) => PAD + (layout.staves.topRef - step) * (gap / 2);
+    const staves = layout.staves;
+    const yOf = (step, staff) => (staff === BASS ? staves.bassTopY : staves.trebleTopY)
+      + ((staff === BASS ? staves.bassTop : staves.trebleTop) - step) * (gap / 2);
     const size = gap * 5;
     for (const [staff, step] of [[TREBLE, TREBLE_MID_STEP], [BASS, BASS_MID_STEP]]) {
       const clef = SVG('text', {
-        class: 'sc-clef', x: width * 0.56, y: yOf(step) + glyphOffset(CLEF[staff], size, CLEF_FONT),
+        class: 'sc-clef', x: width * 0.56, y: yOf(step, staff) + glyphOffset(CLEF[staff], size, CLEF_FONT),
         'font-size': size, 'text-anchor': 'middle',
       });
       clef.textContent = CLEF[staff];
       this.gutter.appendChild(clef);
     }
 
-    const top = yOf(staffTopStep(TREBLE));
-    const bottom = yOf(staffTopStep(BASS) - 8);
+    const top = staves.trebleTopY;
+    const bottom = staves.bassBottomY;
     this.gutter.appendChild(SVG('path', {
       class: 'sc-bracket',
       d: `M ${width - 5} ${top} h -4 v ${bottom - top} h 4`,
@@ -185,12 +187,11 @@ export class ScoreView {
   /** The staff lines stay put; each scroll block draws its own stretch. */
   _drawStaves() {
     const layout = this.layout;
-    const yOf = (step) => PAD + (layout.staves.topRef - step) * (layout.gap / 2);
     this.staves = SVG('g', { class: 'sc-staves' });
     for (const staff of [TREBLE, BASS]) {
-      const top = staffTopStep(staff);
+      const top = staff === TREBLE ? layout.staves.trebleTopY : layout.staves.bassTopY;
       for (let line = 0; line < 5; line++) {
-        const y = yOf(top - line * 2);
+        const y = top + line * layout.gap;
         this.staves.appendChild(SVG('line', {
           class: 'sc-line', x1: 0, x2: layout.width, y1: y, y2: y,
         }));
@@ -218,11 +219,10 @@ export class ScoreView {
     const start = index * layout.chunkSeconds;
     const span = layout.chunkSeconds * pxPerSecond;
     const x0 = start * pxPerSecond;
-    const yOf = (step) => PAD + (layout.staves.topRef - step) * (gap / 2);
     const block = SVG('g', { class: 'sc-block', transform: `translate(${x0} 0)` });
 
-    const trebleTop = yOf(staffTopStep(TREBLE));
-    const bassBottom = yOf(staffTopStep(BASS) - 8);
+    const trebleTop = layout.staves.trebleTopY;
+    const bassBottom = layout.staves.bassBottomY;
     for (const time of layout.bars) {
       if (time < start || time >= start + layout.chunkSeconds) continue;
       const x = (time - start) * pxPerSecond;

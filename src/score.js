@@ -19,7 +19,7 @@ export const TREBLE_TOP_STEP = 38; // F5, the top line of the upper staff
 export const BASS_TOP_STEP = 26; // A3, the top line of the lower staff
 export const TREBLE_MID_STEP = 32; // G4, where the treble clef turns
 export const BASS_MID_STEP = 24; // F3, where the bass clef turns
-const STAFF_HALF_STEPS = 10; // five lines, four gaps, counted in steps
+const STAFF_STEPS = 8; // the steps between the outer lines of one staff
 
 export const PAD = 14; // paper above and below the staves, in px
 export const MAX_GAP = 11; // widest line gap, in px
@@ -27,6 +27,10 @@ export const MIN_GAP = 5.5; // narrowest line gap, in px
 export const HEAD_RX = 0.55; // notehead radius across, in line gaps
 export const HEAD_RY = 0.42; // notehead radius down, in line gaps
 export const STEM_LEN = 3.4; // stem length, in line gaps
+// Extra line gaps between the two staves of the grand staff. With the two gaps
+// the pitch grid already gives, the staves sit six gaps apart, which is the
+// spacing a printed piano score uses.
+export const STAFF_GAP = 4;
 export const CHUNK_SECONDS = 4; // how much music one scroll block holds
 export const PLAYHEAD_RATIO = 0.34; // where the notes cross the marker
 export const CHORD_WINDOW = 0.04; // notes this close share a stem, in seconds
@@ -150,8 +154,8 @@ export function layoutScore(notes, { bars = [], width = 1200, maxHeight = 190 } 
     .slice()
     .sort((a, b) => a.time - b.time || a.midi - b.midi);
 
-  let minStep = TREBLE_TOP_STEP - STAFF_HALF_STEPS;
-  let maxStep = TREBLE_TOP_STEP;
+  let minStep = BASS_TOP_STEP - STAFF_STEPS; // G2, the bottom line of the lower staff
+  let maxStep = TREBLE_TOP_STEP; // F5, the top line of the upper staff
   let midiMin = null;
   let midiMax = null;
   for (const note of sorted) {
@@ -163,13 +167,18 @@ export function layoutScore(notes, { bars = [], width = 1200, maxHeight = 190 } 
   }
 
   const topRef = Math.max(TREBLE_TOP_STEP, maxStep);
-  const bottomRef = Math.min(TREBLE_TOP_STEP - STAFF_HALF_STEPS, minStep);
+  const bottomRef = Math.min(BASS_TOP_STEP - STAFF_STEPS, minStep);
   const halfSteps = topRef - bottomRef;
-  const gap = clamp((maxHeight - 2 * PAD) / (halfSteps / 2), MIN_GAP, MAX_GAP);
-  const height = 2 * PAD + (halfSteps / 2) * gap;
+  // A grand staff leaves air between its two staves. The pitch grid already
+  // separates them by two line gaps, so STAFF_GAP adds the rest.
+  const gap = clamp((maxHeight - 2 * PAD) / (halfSteps / 2 + STAFF_GAP), MIN_GAP, MAX_GAP);
+  const staffShift = STAFF_GAP * gap;
+  const height = 2 * PAD + (halfSteps / 2) * gap + staffShift;
   const pxPerSecond = scrollSpeed(sorted, { width, gap });
 
-  const yOfStep = (step) => PAD + (topRef - step) * (gap / 2);
+  const yOfStep = (step, staff) => PAD + (topRef - step) * (gap / 2) + (staff === BASS ? staffShift : 0);
+  const trebleTopY = PAD + (topRef - TREBLE_TOP_STEP) * (gap / 2);
+  const bassTopY = trebleTopY + 6 * gap + staffShift;
   const glyphs = [];
   let i = 0;
   while (i < sorted.length) {
@@ -205,7 +214,17 @@ export function layoutScore(notes, { bars = [], width = 1200, maxHeight = 190 } 
     midiMin,
     midiMax,
     steps: { min: minStep, max: maxStep },
-    staves: { trebleTop: TREBLE_TOP_STEP, bassTop: BASS_TOP_STEP, topRef, bottomRef },
+    staves: {
+      trebleTop: TREBLE_TOP_STEP,
+      bassTop: BASS_TOP_STEP,
+      topRef,
+      bottomRef,
+      staffShift,
+      trebleTopY,
+      bassTopY,
+      bassBottomY: bassTopY + 4 * gap,
+      trebleBottomY: trebleTopY + 4 * gap,
+    },
     glyphs,
     bars: barSeconds,
     duration,
@@ -219,7 +238,7 @@ function glyphOf(chord, staff, { gap, yOfStep, pxPerSecond }) {
     return {
       midi: note.midi,
       step,
-      y: yOfStep(step),
+      y: yOfStep(step, staff),
       accidental,
       start: note.time,
       end: note.time + (note.duration || 0),
@@ -239,7 +258,7 @@ function glyphOf(chord, staff, { gap, yOfStep, pxPerSecond }) {
     : { x: -offset, y1: top, y2: bottom + STEM_LEN * gap };
 
   const ledgers = [...new Set(heads.flatMap((h) => ledgerStepsOf(h.step, staff)))].map((step) => ({
-    y: yOfStep(step),
+    y: yOfStep(step, staff),
     x1: -1.5 * gap,
     x2: 1.5 * gap,
   }));

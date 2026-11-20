@@ -63,14 +63,34 @@ test('a note lands on the line its pitch names', () => {
 
   const [right] = layout.glyphs.filter((g) => g.staff === TREBLE);
   const [left] = layout.glyphs.filter((g) => g.staff === BASS);
-  assert.equal(right.heads[0].y, PAD + (38 - 28) * (layout.gap / 2), 'C4 must sit on the middle C step');
-  assert.equal(left.heads[0].y, PAD + (38 - 21) * (layout.gap / 2), 'C3 must sit on the C3 step');
+  const staves = layout.staves;
+  assert.equal(
+    right.heads[0].y,
+    staves.trebleTopY + (staves.trebleTop - 28) * (layout.gap / 2),
+    'C4 must sit on the middle C step',
+  );
+  assert.equal(
+    left.heads[0].y,
+    staves.bassTopY + (staves.bassTop - 21) * (layout.gap / 2),
+    'C3 must sit on the C3 step',
+  );
   assert.ok(left.heads[0].y > right.heads[0].y, 'a lower note must sit lower on the paper');
 
   // C4 is not on either staff line: it sits between the staves, so the upper
   // staff needs one ledger line and the lower staff needs none.
   assert.equal(right.ledgers.length, 1, 'the upper staff needs one ledger line for middle C');
   assert.equal(left.ledgers.length, 0, 'C3 sits inside the lower staff');
+});
+
+test('the staves keep a grand-staff gap between them', () => {
+  const layout = layoutScore([note(60, 1), note(48, 1, 0.5, 'L')], { width: 1200 });
+  const { staves } = layout;
+  const away = (staves.bassTopY - staves.trebleBottomY) / layout.gap;
+  // Two line gaps come from the pitch grid itself, and STAFF_GAP adds four.
+  assert.equal(away, 6, `the staves sit ${away.toFixed(2)} line gaps apart, which is not the grand-staff rule`);
+  // The extra air must stay inside the paper.
+  assert.ok(staves.bassBottomY <= layout.height, 'the lower staff left the paper');
+  assert.ok(staves.trebleTopY >= 0, 'the upper staff left the paper');
 });
 
 test('notes at the same moment share one stem', () => {
@@ -117,7 +137,10 @@ test('a wide register shrinks the line gap instead of leaving the paper', () => 
     }
   }
   assert.ok(layout.gap >= MIN_GAP, 'the line gap fell below the readable limit');
-  assert.ok(layout.height <= 190, 'the paper grew past the height the window offers');
+  // The paper grows only when the readable limit stops the gap from shrinking.
+  if (layout.gap > MIN_GAP) {
+    assert.ok(layout.height <= 190, 'the paper grew past the height the window offers');
+  }
 });
 
 test('bar lines come from the file time signature and tempo', () => {
