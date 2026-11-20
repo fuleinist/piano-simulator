@@ -148,6 +148,20 @@ select { max-width: 320px; min-width: 0; flex: 0 1 auto; }
 .lib-rename input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .lib-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; }
 
+/* Find music: a wider dialog with a search row. Each result shows its source,
+   its licence and a link to the item, so the licence is visible before a load. */
+.search-dialog { width: min(640px, calc(100vw - 24px)); }
+.search-form { display: flex; gap: 8px; margin: 4px 0 10px; }
+.search-form input {
+  flex: 1 1 auto; min-width: 0; padding: 8px 12px; font-family: inherit; font-size: 13px;
+  color: var(--text); background: rgba(0,0,0,0.35); border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.search-form input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.search-dialog .lib-meta a { color: var(--accent2); text-decoration: none; }
+.search-dialog .lib-meta a:hover { text-decoration: underline; }
+.search-dialog .lib-foot .hint { margin: 0; }
+
 #side {
   position: fixed; top: 76px; right: 14px; z-index: 10; width: 210px;
   display: flex; flex-direction: column; gap: 12px;
@@ -215,6 +229,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   .lib-row { flex-wrap: wrap; }
   .lib-actions { width: 100%; }
   .lib-actions .btn.small { flex: 1 1 auto; }
+  .search-form input { font-size: 16px; }
 }
 
 /* On a narrow phone the brand and the controls cannot share one row, so the
@@ -222,6 +237,10 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 @media (max-width: 560px) {
   #topbar { flex-wrap: wrap; padding-bottom: 4px; }
   .top-right { width: 100%; }
-  .song-controls { flex: 1 1 auto; }
+  .song-controls { flex: 1 1 auto; flex-wrap: wrap; }
+  /* The picker takes the first row, and the three buttons share the next one.
+     Equal widths and a smaller font keep all three on one line at 320px. */
+  .song-controls .combobox { flex: 1 1 100%; }
+  .song-controls .btn { flex: 1 1 0; min-width: 0; padding: 7px 6px; font-size: 12px; }
   .brand p { max-width: 100%; }
 }

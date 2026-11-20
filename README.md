@@ -71,6 +71,19 @@ The **Library** button lists the stored files. Each row shows the size, the note
 - A full storage quota shows a message and keeps the stored files. The imported file still plays.
 - A private window may clear the library when it closes. A browser under storage pressure may also clear it.
 
+### Finding music online
+
+**Find music** searches the Internet Archive for MIDI files. Each result shows its source, its size and its licence before you load it. A result offers Load, Save and a link to the item page.
+
+Save keeps the file in the local library, so it joins **My MIDI files**. Load plays it once without keeping it.
+
+- A result is only shown when the item really holds a MIDI file. The app checks the item metadata before it lists the result.
+- The licence comes from the item record. An item with no licence reads `Licence not stated`, and the item page is one click away.
+- A provider that times out or fails leaves the rest of the list intact and reports the failure. Your own files keep working.
+- Typing is debounced by 300 ms, and a new query cancels the old one.
+
+The Internet Archive allows a browser to call its search API, but not its file download. A small Worker route, `/api/midi`, adds the missing CORS header. The route accepts only `https` downloads from `archive.org` or its storage hosts, refuses a foreign origin, caps a file at 8 MB, caches a download for a day, and limits each client to 60 requests a minute. A development server runs the same handler as middleware, so the feature works without a deploy.
+
 ### Sampled audio
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
 
@@ -136,7 +149,7 @@ npm run preview
 
 ## Deploy
 
-The site is a static Worker. `wrangler.jsonc` publishes `dist/` and nothing else, so the build output is the whole deployment.
+The site is a Worker with one script. `wrangler.jsonc` publishes `dist/` as assets, and `worker/index.js` answers `/api/midi` for the remote search. Every other request reaches the assets, so the build output is still the whole site.
 
 ```bash
 npm run deploy
@@ -164,6 +177,7 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 | Piece picker | Search the 18 built-in pieces by title or composer, then pick one. |
 | Load MIDI | Open any standard MIDI file from your disk. The file stays in the library. |
 | Library | List the stored files. Load, rename, or delete one. |
+| Find music | Search the Internet Archive. Load a result, or save it to the library. |
 | Play / Pause | Start or stop the performance. |
 | Seek slider | Move to any point in the piece. |
 | Speed slider | Set the tempo from 0.25x to 2x. |
@@ -203,6 +217,11 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 | `src/library.js` | Content hash, record shape, metadata, sort order, and quota test. No DOM import. |
 | `src/librarystore.js` | The IndexedDB store for the local library. |
 | `src/libraryui.js` | The My MIDI files dialog: rows, rename, and delete. |
+| `src/midisources.js` | Licence labels, result shape, file choice, and the search fan-out. No DOM import. |
+| `src/sources/internetarchive.js` | The Internet Archive provider: search, metadata, and download. |
+| `src/searchui.js` | The Find music dialog: debounce, result rows, and load or save. |
+| `worker/index.js` | The Worker entry: the `/api/midi` route, then the assets. |
+| `worker/proxy.js` | The download proxy: allowlist, origin check, size cap, cache, and rate limit. |
 | `src/main.js` | App wiring and UI events. |
 
 ## Tests
@@ -211,7 +230,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-`npm test` runs ten unit suites and the smoke test. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
+`npm test` runs twelve unit suites and the smoke test. The source test checks the licence labels, the result shape, the fan-out timeout, and the partial-failure rule. The proxy test checks the address allowlist, the origin check, the size cap, the rate limit, and the cache. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. All 18 pieces pass.
 
 Regenerate the rig fixtures after changing an asset:
 
@@ -236,5 +255,7 @@ npm run fixtures
 - The rig hand spans about 158 mm, against about 193 mm for an adult hand. All 16 right-hand tenth stretches therefore miss their keys by more than 10 mm.
 - The resting thumb dips up to 7 mm below the key top on some pinky-only chords. The wrist cannot rise further without lifting the playing pinky off its key.
 - Skin is a single material with no texture maps. The mesh carries no nails, pores, or creases.
+- The remote search needs the Worker route for a download. A plain static host serves the search but not the files.
+- The Internet Archive metadata is user-contributed. A result may be a poor rendition of the piece its title names.
 - The local library depends on browser storage. A private window, or a browser under storage pressure, may remove it.
 - Recording uses the browser MediaRecorder API. Output is WebM. Some browsers may record video only if the audio tap is unavailable.
