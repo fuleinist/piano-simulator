@@ -145,43 +145,6 @@ test('the remote search is wired to a Worker proxy', () => {
   assert.match(proxy, /RateLimiter/, 'the proxy needs a rate limit');
 });
 
-test('live streaming is wired to a relay with a guarded key field', () => {
-  assert.match(html, /<button\b[^>]*\bid="liveBtn"/, 'no live button');
-  const dialog = html.match(/<dialog\b[^>]*\bid="liveDialog"[^>]*>/);
-  assert.ok(dialog, 'index.html carries no #liveDialog');
-  const labelled = attr(dialog[0], 'aria-labelledby');
-  assert.ok(html.includes(`id="${labelled}"`), 'aria-labelledby must name a real element');
-
-  // The key must not sit in a plain text field.
-  const keyField = html.match(/<input\b[^>]*\bid="liveKey"[^>]*>/);
-  assert.ok(keyField, 'no #liveKey field');
-  assert.equal(attr(keyField[0], 'type'), 'password', 'the key field must hide its value');
-  assert.match(html, /aria-pressed="false"[^>]*>Show</, 'the key needs a reveal toggle that starts hidden');
-  assert.match(html, /id="liveBadge"[^>]*hidden/, 'the on-air badge must start hidden');
-
-  const main = read('src/main.js');
-  assert.match(main, /VITE_RELAY_URL/, 'the relay address must come from the build');
-  assert.match(main, /streamer\.stopIn/, 'the piece must be able to end the stream');
-  assert.match(main, /liveKey'\)\.value = ''/, 'the app must clear the key field on start');
-
-  // Regression guard: a suspended audio context makes MediaRecorder emit
-  // nothing at all, so the capture helper must check the context first.
-  const capture = read('src/capture.js');
-  assert.match(capture, /state === 'running'/, 'capture must check the audio context state');
-  assert.match(capture, /mediaStreamDestination|createMediaStreamDestination/, 'capture must still mix audio');
-  // A live run proved ffmpeg reads VP9 from a pipe badly, so VP8 comes first.
-  assert.match(read('src/streamer.js'), /'video\/webm;codecs=vp8,opus', 'video\/webm;codecs=vp9,opus'/, 'VP8 must be the first stream codec');
-
-  // The relay is a dependency-free ffmpeg builder plus a server.
-  assert.match(read('relay/ffmpeg.js'), /'-f', 'flv'/, 'the relay must push FLV');
-  assert.match(read('relay/ffmpeg.js'), /libx264/, 'the relay must transcode');
-  const relay = read('relay/server.js');
-  assert.match(relay, /ALLOWED_ORIGINS/, 'the relay must check the origin');
-  assert.match(relay, /MAX_SESSIONS/, 'the relay must cap sessions');
-  assert.match(relay, /MAX_SECONDS/, 'the relay must cap a session length');
-  assert.doesNotMatch(relay, /exec\(|execSync/, 'the relay must never use a shell');
-});
-
 test('the deploy publishes the build output', () => {
   assert.equal(wrangler.assets.directory, './dist', 'the Worker must serve dist/');
   // vite writes to dist/ unless vite.config.js says otherwise.

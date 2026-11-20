@@ -83,14 +83,7 @@
       <button id="recordBtn" class="btn record">● Record video</button>
       <p class="hint" id="recHint">Saves a WebM with audio. Stops when the piece ends.</p>
     </section>
-    <section>
-      <h2>Live</h2>
-      <button id="liveBtn" class="btn live" aria-haspopup="dialog">● Go live</button>
-      <p class="hint" id="liveHint">Streams to YouTube, Twitch, Facebook, or a custom RTMP address.</p>
-    </section>
   </aside>
-
-  <div id="liveBadge" hidden aria-live="polite">● LIVE</div>
 
   <footer id="transport">
     <button id="playBtn" class="btn play" aria-label="Play">▶</button>
@@ -137,50 +130,6 @@
       <span class="hint">Source: <a href="https://archive.org" target="_blank" rel="noopener noreferrer">Internet Archive</a></span>
       <button id="searchDone" class="btn small" type="button">Done</button>
     </div>
-  </dialog>
-
-  <dialog id="liveDialog" class="lib-dialog live-dialog" aria-labelledby="liveTitle">
-    <div class="lib-head">
-      <h2 id="liveTitle">Go live</h2>
-      <button id="liveClose" class="btn small" type="button" aria-label="Close">✕</button>
-    </div>
-    <form id="liveForm" class="live-form">
-      <label for="livePlatform">Platform</label>
-      <select id="livePlatform"></select>
-
-      <label for="liveIngest">Ingest address</label>
-      <input id="liveIngest" type="text" spellcheck="false" autocomplete="off" />
-
-      <label for="liveKey">Stream key</label>
-      <div class="key-row">
-        <input id="liveKey" type="password" autocomplete="off" spellcheck="false" aria-describedby="liveKeyHint" />
-        <button id="liveReveal" class="btn small" type="button" aria-pressed="false">Show</button>
-      </div>
-      <p id="liveKeyHint" class="hint">The key stays in memory for this session only. It is never saved, shown again, or logged.</p>
-
-      <label for="liveQuality">Quality</label>
-      <select id="liveQuality"></select>
-
-      <p id="liveNote" class="hint"></p>
-      <p id="liveStatus" class="hint" role="status" aria-live="polite"></p>
-
-      <div id="liveConfirm" class="live-confirm" hidden>
-        <p id="liveConfirmText"></p>
-        <div class="lib-foot">
-          <button id="liveStart" class="btn record" type="button">Start broadcast</button>
-          <button id="liveCancel" class="btn small" type="button">Cancel</button>
-        </div>
-      </div>
-
-      <div class="lib-foot" id="liveSetup">
-        <button id="liveContinue" class="btn record" type="submit">Continue</button>
-      </div>
-
-      <div class="lib-foot" id="liveRunning" hidden>
-        <button id="liveStop" class="btn small" type="button">■ Stop streaming</button>
-        <button id="liveDone" class="btn small" type="button">Close</button>
-      </div>
-    </form>
   </dialog>
 
   <div id="loader"><div class="spin"></div><p id="loaderText">Loading samples…</p></div>

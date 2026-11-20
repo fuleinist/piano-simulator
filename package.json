@@ -13,7 +13,7 @@
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
     "preview": "vite preview",
-    "test": "node --test tests/handrig.test.mjs tests/keylight.test.mjs tests/chords.test.mjs tests/frames.test.mjs tests/fingering.test.mjs tests/motion.test.mjs tests/pedals.test.mjs tests/songsearch.test.mjs tests/library.test.mjs tests/midisources.test.mjs tests/proxy.test.mjs tests/streamstate.test.mjs tests/streampresets.test.mjs tests/relay.test.mjs tests/page.test.mjs && node tests/smoke.mjs",
+    "test": "node --test tests/handrig.test.mjs tests/keylight.test.mjs tests/chords.test.mjs tests/frames.test.mjs tests/fingering.test.mjs tests/motion.test.mjs tests/pedals.test.mjs tests/songsearch.test.mjs tests/library.test.mjs tests/midisources.test.mjs tests/proxy.test.mjs tests/page.test.mjs && node tests/smoke.mjs",
     "fixtures": "node tools/extract-rig-fixture.mjs"
   },
   "dependencies": {
