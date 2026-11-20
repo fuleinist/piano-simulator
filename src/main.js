@@ -15,10 +15,6 @@ import {
 } from './library.js';
 import { SearchPanel } from './searchui.js';
 import { internetArchive } from './sources/internetarchive.js';
-import { Streamer } from './streamer.js';
-import {
-  DEFAULT_PLATFORM, DEFAULT_QUALITY, PLATFORMS, QUALITIES, findPlatform, ingestBase, isSecureRelay,
-} from './streampresets.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage');
@@ -29,10 +25,6 @@ const bars = new Bars(scene.scene);
 const hands = new Hands(scene.scene);
 const player = new Player(piano, bars, hands);
 const recorder = new Recorder(canvas, scene);
-// The relay address is fixed at build time. Without it, live streaming stays
-// off and the rest of the app is unchanged.
-const RELAY_URL = import.meta.env?.VITE_RELAY_URL || '';
-const streamer = new Streamer(canvas, scene, { relayUrl: RELAY_URL });
 const preview = new FramePreview(scene, $('framePreview'));
 
 // How long the recorder keeps rolling after the piece ends, in seconds. The
@@ -376,7 +368,6 @@ recorder.onState = (r) => {
   b.textContent = r.recording ? '■ Stop recording' : '● Record video';
   // The shape cannot change while a capture runs, so lock the buttons.
   document.querySelectorAll('[data-frame]').forEach((x) => { x.disabled = r.recording; });
-  $('liveBtn').disabled = r.recording || Boolean(liveBlockedReason());
   if (r.stopping) $('recHint').textContent = 'Finishing the last chord…';
   else if (r.recording) $('recHint').textContent = `Recording ${recorder.frame}. Press Stop to save now.`;
   else $('recHint').textContent = 'Saves a WebM with audio. Stops when the piece ends.';
@@ -396,139 +387,6 @@ document.querySelectorAll('[data-frame]').forEach((b) => {
 // A recording follows the piece: it stops itself a moment after the last note.
 player.onEnd = () => {
   if (recorder.recording) recorder.stopIn(RECORD_TAIL_S);
-  if (streamer.onAir) streamer.stopIn(RECORD_TAIL_S);
-};
-
-// --- Live ----------------------------------------------------------------
-const qualityOf = (id) => QUALITIES.find((q) => q.id === id) || QUALITIES[0];
-
-for (const platform of PLATFORMS) {
-  const option = document.createElement('option');
-  option.value = platform.id;
-  option.textContent = platform.label;
-  $('livePlatform').append(option);
-}
-for (const quality of QUALITIES) {
-  const option = document.createElement('option');
-  option.value = quality.id;
-  option.textContent = quality.label;
-  $('liveQuality').append(option);
-}
-$('livePlatform').value = DEFAULT_PLATFORM;
-$('liveQuality').value = DEFAULT_QUALITY;
-
-function applyPlatform() {
-  const platform = findPlatform($('livePlatform').value);
-  $('liveIngest').value = platform?.ingest || '';
-  $('liveIngest').readOnly = platform ? platform.id !== 'custom' : false;
-  $('liveNote').textContent = platform?.note || '';
-}
-applyPlatform();
-
-$('livePlatform').addEventListener('change', applyPlatform);
-
-// The key is a password field with a reveal toggle, and the value never leaves
-// the field until a start clears it.
-$('liveReveal').addEventListener('click', () => {
-  const input = $('liveKey');
-  const show = input.type === 'password';
-  input.type = show ? 'text' : 'password';
-  $('liveReveal').textContent = show ? 'Hide' : 'Show';
-  $('liveReveal').setAttribute('aria-pressed', String(show));
-});
-
-function liveBlockedReason() {
-  if (!streamer.available) return 'Live streaming needs a relay. Set VITE_RELAY_URL when you build the site.';
-  if (!isSecureRelay(RELAY_URL)) return 'The relay needs wss:// (or ws:// on localhost). A key must not cross an open socket.';
-  if (recorder.recording) return 'Stop the local recording first. One capture at a time.';
-  return '';
-}
-
-$('liveHint').textContent = liveBlockedReason() || 'Streams to YouTube, Twitch, Facebook, or a custom RTMP address.';
-$('liveBtn').disabled = Boolean(liveBlockedReason());
-if (!streamer.available) $('liveBtn').title = 'No relay is configured for this build.';
-
-function openLive() {
-  const reason = liveBlockedReason();
-  if (reason) { $('liveHint').textContent = reason; return; }
-  $('liveError')?.remove();
-  $('liveConfirm').hidden = true;
-  $('liveSetup').hidden = false;
-  $('liveKey').value = '';
-  $('liveKey').type = 'password';
-  $('liveReveal').textContent = 'Show';
-  $('liveReveal').setAttribute('aria-pressed', 'false');
-  $('liveStatus').textContent = '';
-  $('liveDialog').showModal();
-  $('livePlatform').focus();
-}
-
-$('liveBtn').addEventListener('click', () => {
-  if (streamer.onAir) { streamer.stop(); return; }
-  openLive();
-});
-$('liveClose').addEventListener('click', () => $('liveDialog').close());
-
-$('liveForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const key = $('liveKey').value.trim();
-  const base = $('liveIngest').value.trim();
-  if (!key || !base) {
-    $('liveStatus').textContent = 'Enter the stream key and the ingest address.';
-    return;
-  }
-  // An explicit second step, because this starts a public broadcast.
-  $('liveConfirmText').textContent = `Start a public broadcast to ${findPlatform($('livePlatform').value)?.label || base} at ${qualityOf($('liveQuality').value).label}?`;
-  $('liveConfirm').hidden = false;
-  $('liveSetup').hidden = true;
-  $('liveStart').focus();
-});
-
-$('liveCancel').addEventListener('click', () => {
-  $('liveConfirm').hidden = true;
-  $('liveSetup').hidden = false;
-  $('liveKey').focus();
-});
-
-$('liveStart').addEventListener('click', () => {
-  const key = $('liveKey').value.trim();
-  const base = $('liveIngest').value.trim();
-  $('liveKey').value = '';
-  $('liveDialog').close();
-  streamer.start({ key, base, quality: $('liveQuality').value, frame: recorder.frame });
-});
-
-$('liveStop').addEventListener('click', () => { streamer.stop(); $('liveDialog').close(); });
-$('liveDone').addEventListener('click', () => $('liveDialog').close());
-
-streamer.onState = (live) => {
-  const button = $('liveBtn');
-  button.textContent = live.onAir ? '■ Stop streaming' : '● Go live';
-  button.classList.toggle('on', live.onAir);
-  button.disabled = !live.onAir && Boolean(liveBlockedReason());
-  $('liveBadge').hidden = !live.onAir;
-  $('liveRunning').hidden = !live.onAir;
-  $('liveSetup').hidden = live.onAir;
-
-  const seconds = Math.round(live.seconds);
-  const minutes = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  const sent = live.bytes ? `${(live.bytes / 1024 / 1024).toFixed(1)} MB` : '0 MB';
-
-  if (live.error) $('liveHint').textContent = live.error;
-  else if (live.onAir) $('liveHint').textContent = `On air ${minutes} · ${sent} sent · ${live.target}`;
-  else if (live.state === 'connecting') $('liveHint').textContent = 'Connecting to the relay…';
-  else if (live.state === 'reconnecting') $('liveHint').textContent = live.error || 'Reconnecting…';
-  else $('liveHint').textContent = liveBlockedReason() || 'Streams to YouTube, Twitch, Facebook, or a custom RTMP address.';
-
-  // One capture at a time: a live stream locks the recorder, and the reverse
-  // is handled in recorder.onState.
-  if (live.onAir) {
-    $('recordBtn').disabled = true;
-    document.querySelectorAll('[data-frame]').forEach((x) => { x.disabled = true; });
-  } else {
-    $('recordBtn').disabled = false;
-    document.querySelectorAll('[data-frame]').forEach((x) => { x.disabled = false; });
-  }
 };
 
 // --- Keyboard ------------------------------------------------------------
@@ -597,6 +455,6 @@ frame();
 
 // Debug/test handle (harmless in production).
 window.__piano = {
-  player, scene, piano, bars, hands, recorder, preview, THREE, picker, store, panel, search, streamer,
+  player, scene, piano, bars, hands, recorder, preview, THREE, picker, store, panel, search,
   library: () => ({ ready: libraryReady, records, currentEntry }),
 };
