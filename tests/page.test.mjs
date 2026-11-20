@@ -169,6 +169,8 @@ test('live streaming is wired to a relay with a guarded key field', () => {
   const capture = read('src/capture.js');
   assert.match(capture, /state === 'running'/, 'capture must check the audio context state');
   assert.match(capture, /mediaStreamDestination|createMediaStreamDestination/, 'capture must still mix audio');
+  // A live run proved ffmpeg reads VP9 from a pipe badly, so VP8 comes first.
+  assert.match(read('src/streamer.js'), /'video\/webm;codecs=vp8,opus', 'video\/webm;codecs=vp9,opus'/, 'VP8 must be the first stream codec');
 
   // The relay is a dependency-free ffmpeg builder plus a server.
   assert.match(read('relay/ffmpeg.js'), /'-f', 'flv'/, 'the relay must push FLV');

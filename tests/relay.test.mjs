@@ -40,6 +40,15 @@ test('the bitrate and the frame rate stay inside the guard rails', () => {
   assert.equal(high[high.indexOf('-g') + 1], '120', '60 fps is the ceiling');
 });
 
+test('the demuxer flags stay safe for a pipe', () => {
+  const args = buildArgs({ ingest: 'rtmp://a.example/live2/k' });
+  // nobuffer makes the matroska demuxer start before the header settles, and
+  // ffmpeg then discards every frame: "interframe without a prior keyframe".
+  assert.ok(!args.includes('nobuffer'), 'nobuffer breaks a piped WebM');
+  assert.ok(args.includes('+discardcorrupt'), 'a corrupt frame must not stop the stream');
+  assert.deepEqual(args.slice(args.indexOf('-f', 2), args.indexOf('-f', 2) + 2), ['-f', 'webm']);
+});
+
 test('a bad address cannot reach ffmpeg', () => {
   assert.throws(() => buildArgs({ ingest: 'http://a.example/live2/k' }), /rtmp:\/\/ or rtmps/);
   assert.throws(() => buildArgs({}), /rtmp:\/\/ or rtmps/);

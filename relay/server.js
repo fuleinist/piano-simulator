@@ -64,12 +64,15 @@ wss.on('connection', (socket, request) => {
     clearTimeout(timer);
     sessions = Math.max(0, sessions - 1);
     if (ffmpeg) {
-      try { ffmpeg.stdin.end(); } catch { /* already closed */ }
-      // Give ffmpeg a moment to write the trailer, then insist.
-      const kill = setTimeout(() => { try { ffmpeg.kill('SIGKILL'); } catch { /* gone */ } }, 3000);
-      ffmpeg.once('exit', () => clearTimeout(kill));
-      try { ffmpeg.kill('SIGTERM'); } catch { /* gone */ }
+      const child = ffmpeg;
       ffmpeg = null;
+      // End the input and let ffmpeg finish on its own, so it writes the FLV
+      // trailer and the platform receives a closed stream. A signal here cuts
+      // the last GOP. Signals stay as a last resort.
+      try { child.stdin.end(); } catch { /* already closed */ }
+      const term = setTimeout(() => { try { child.kill('SIGTERM'); } catch { /* gone */ } }, 2500);
+      const kill = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 5000);
+      child.once('exit', () => { clearTimeout(term); clearTimeout(kill); });
     }
     target = '';
     try { socket.close(code, reason); } catch { /* already closed */ }

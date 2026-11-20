@@ -37,8 +37,14 @@ export function captureStream(canvas, { fps = 60, audio = true } = {}) {
   return { stream, dest, audio: Boolean(dest) };
 }
 
-/** Disconnect the audio tap and stop every track. */
-export function releaseCapture({ stream, dest } = {}) {
+/**
+ * Disconnect the audio tap and stop every track. A null or undefined argument
+ * is a no-op: a default parameter covers undefined only, and the callers run
+ * this twice on a stop.
+ */
+export function releaseCapture(capture) {
+  if (!capture) return;
+  const { stream, dest } = capture;
   if (dest) {
     try { Tone.getDestination().disconnect(dest); } catch { /* already gone */ }
   }

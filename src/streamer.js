@@ -18,7 +18,10 @@ import { DEFAULT_FRAME, FRAMES } from './frames.js';
 import { STATE, nextState, retryDelay } from './streamstate.js';
 import { findQuality, redactTarget, streamTarget } from './streampresets.js';
 
-const MIME_OPTIONS = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+// VP8 comes first. ffmpeg reads a VP9 stream from a pipe badly: it reports
+// "zero_bit out of range" and drops frames, while VP8 parses cleanly. The relay
+// transcodes to H.264 either way, so nothing is lost by preferring VP8.
+const MIME_OPTIONS = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm'];
 
 export class Streamer {
   /**
@@ -95,8 +98,15 @@ export class Streamer {
     this._tail = 0;
     this._stopping = true;
     this._setState(STATE.STOPPING, 'stop');
-    this._teardown();
-    this._setState(STATE.IDLE, 'done');
+    // The recorder's last dataavailable carries the WebM trailer. Stop it and
+    // wait for that chunk before the socket closes, or ffmpeg reads a cut file
+    // and reports a decode error at the end of the stream.
+    this._finishRecorder().then(() => {
+      this._teardown();
+      this._stopping = false;
+      this._setState(STATE.IDLE, 'done');
+      this._emit();
+    });
   }
 
   /** Stop after a delay, so the last chord stays in the stream. */
@@ -205,7 +215,34 @@ export class Streamer {
     }, delay);
   }
 
+  /** Stop the recorder and resolve after its final chunk has been sent. */
+  _finishRecorder() {
+    const rec = this._rec;
+    if (!rec || rec.state === 'inactive') {
+      this._stopRecorder();
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      // Declared before `done`, because a recorder can fire onstop from inside
+      // stop(), before a later const would be initialised.
+      let timer = 0;
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this._stopRecorder();
+        resolve();
+      };
+      // A stuck recorder must not hold the state machine in stopping.
+      timer = setTimeout(done, 1500);
+      rec.onstop = done;
+      try { rec.stop(); } catch { done(); }
+    });
+  }
+
   _stopRecorder() {
+    if (!this._rec && !this._capture) return; // idempotent: stop runs twice
     try { this._rec?.stop(); } catch { /* already stopped */ }
     this._rec = null;
     releaseCapture(this._capture);
@@ -219,9 +256,8 @@ export class Streamer {
     }
     try { this._ws?.close(); } catch { /* already closed */ }
     this._ws = null;
-    this._stopRecorder();
-    // The key leaves memory here, and nowhere else.
-    this._target = '';
+    // The key leaves memory even if the capture release throws.
+    try { this._stopRecorder(); } finally { this._target = ''; }
     this.scene.setFrame(null);
   }
 

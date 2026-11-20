@@ -37,7 +37,10 @@ export function buildArgs({ ingest, quality = {} } = {}) {
     '-hide_banner',
     '-loglevel', 'warning',
     // The browser sends WebM chunks over a pipe, so the format is explicit.
-    '-fflags', 'nobuffer',
+    // Do not add -fflags nobuffer here: it makes the matroska demuxer start
+    // decoding before the header settles, and ffmpeg then discards every frame
+    // it sees with "interframe without a prior keyframe".
+    '-fflags', '+discardcorrupt',
     '-f', 'webm',
     '-i', 'pipe:0',
     // VP8/Opus must become H.264/AAC for RTMP. A copy cannot work.
