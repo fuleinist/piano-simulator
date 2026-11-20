@@ -6,6 +6,10 @@
   --muted: #9aa3b5;
   --accent: #ffab2e;
   --accent2: #2f9dff;
+  /* A phone puts its notch and home bar inside the window. These two read 0
+     on a device that has neither, so one set of rules serves every screen. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
@@ -30,7 +34,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; co
 #topbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 18px; gap: 16px;
+  padding: calc(12px + var(--safe-t)) 18px 12px; gap: 16px;
   background: linear-gradient(to bottom, rgba(7,9,15,0.85), rgba(7,9,15,0));
   pointer-events: none;
 }
@@ -62,6 +66,19 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; co
 .icon-link:active { transform: translateY(1px); }
 .icon-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .icon-link svg { display: block; }
+
+/* The Controls button opens the side panel as a sheet. A wide screen shows the
+   panel in the corner, so the button, the scrim, and the sheet's own header
+   stay out of sight until the layout is narrow (see the media query at the
+   end of this file). */
+#panelBtn {
+  display: none; place-items: center; width: 34px; height: 34px; padding: 0; flex: none;
+}
+#panelBtn svg { display: block; }
+#panelBtn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.sheet-head { display: none; }
+#panelScrim { position: fixed; inset: 0; z-index: 20; background: rgba(3, 5, 10, 0.6); }
+#panelScrim[hidden] { display: none; }
 
 select, .btn, .combobox input {
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
@@ -165,6 +182,9 @@ select { max-width: 320px; min-width: 0; flex: 0 1 auto; }
 #side {
   position: fixed; top: 76px; right: 14px; z-index: 10; width: 210px;
   display: flex; flex-direction: column; gap: 12px;
+  /* A short window, such as a phone held sideways, has less height than the
+     four sections need. The panel scrolls instead of running off the screen. */
+  max-height: calc(100dvh - 96px); overflow-y: auto; overscroll-behavior: contain;
 }
 #side section {
   background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
@@ -177,6 +197,12 @@ select { max-width: 320px; min-width: 0; flex: 0 1 auto; }
 .row { display: flex; gap: 6px; }
 .frame-row { margin-bottom: 8px; }
 .hint { font-size: 11px; color: var(--muted); margin: 8px 0 0; line-height: 1.4; }
+/* The gesture hint names the gestures of the device in hand. */
+.hint-coarse { display: none; }
+@media (pointer: coarse) {
+  .hint-fine { display: none; }
+  .hint-coarse { display: block; }
+}
 .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; cursor: pointer; }
 .toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
 input[type="range"] { width: 100%; accent-color: var(--accent); }
@@ -185,15 +211,20 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 @keyframes pulse { 50% { border-color: rgba(255,60,60,0.9); } }
 
 #transport {
-  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 10;
-  width: min(760px, calc(100vw - 260px)); display: flex; align-items: center; gap: 14px;
+  position: fixed; bottom: calc(14px + var(--safe-b)); z-index: 10;
+  /* Centre the bar in the space left of the side panel. Centring it in the
+     window instead puts it under the panel on a narrow screen. */
+  left: 14px; right: 238px; margin-left: auto; margin-right: auto;
+  max-width: 760px; width: auto;
+  display: flex; align-items: center; gap: 14px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
   padding: 12px 16px; backdrop-filter: blur(14px);
 }
 .btn.play { width: 46px; height: 46px; border-radius: 50%; font-size: 17px; flex: none;
   background: var(--accent); color: #1a1206; border: none; font-weight: 700; }
 .btn.play:hover { filter: brightness(1.08); }
-.time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); flex: none; min-width: 92px; }
+.time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); flex: none;
+  min-width: 92px; white-space: nowrap; }
 /* The live pedal readout. An empty label takes no space, so a piece with no
    pedal events leaves the transport as it was. */
 .pedal { font-size: 11px; color: var(--accent2); flex: none; white-space: nowrap;
@@ -217,30 +248,124 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   animation: rot 0.9s linear infinite; }
 @keyframes rot { to { transform: rotate(360deg); } }
 
-@media (max-width: 720px) {
-  #side { display: none; }
-  #transport { width: calc(100vw - 24px); }
-  .speed input { width: 60px; }
-  /* A 16px input stops iOS from zooming the viewport on focus, and the taller
-     rows stay a comfortable touch target. */
-  .combobox input { font-size: 16px; }
-  .song-controls .combobox { width: auto; flex: 1 1 140px; }
+/* --- Small screens and touch input --------------------------------------- */
+
+/* A finger needs a larger target than a mouse pointer does. 44px is the size
+   a thumb can hit without aiming, so every control reaches it on a touch
+   screen at any width, including a tablet held in the hand. */
+@media (pointer: coarse) {
+  .btn, .btn.small { min-height: 44px; }
+  .icon-link, #panelBtn { width: 44px; height: 44px; }
+  .combobox input { min-height: 44px; }
+  .toggle { padding: 10px 0; }
+  .toggle input { width: 22px; height: 22px; }
+  input[type="range"] { height: 34px; }
   .cb-option { min-height: 48px; }
+  .lib-actions .btn.small { min-height: 44px; }
+}
+
+@media (max-width: 720px) {
+  /* The side panel becomes a sheet, so no control is lost and none overflows.
+     The button opens it, the scrim behind it closes it, and the sheet scrolls
+     when the sections are taller than the window. */
+  #panelBtn { display: grid; }
+  #side {
+    top: auto; bottom: 0; left: 0; right: 0; width: auto; z-index: 21;
+    display: none; gap: 0;
+    max-height: min(86dvh, 640px); overflow-y: auto; overscroll-behavior: contain;
+    padding: 0 14px calc(14px + var(--safe-b));
+    border: 1px solid var(--border); border-bottom: none; border-radius: 18px 18px 0 0;
+    background: rgba(10, 13, 20, 0.98); box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(18px);
+  }
+  #side[data-open="true"] { display: flex; }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: sticky; top: 0; z-index: 1; padding: 12px 0 8px;
+    background: rgba(10, 13, 20, 0.98);
+  }
+  .sheet-head h2 {
+    margin: 0; font-size: 13px; font-weight: 650; letter-spacing: 0;
+    text-transform: none; color: var(--text);
+  }
+  .sheet-head .btn.small { flex: none; width: 44px; }
+  /* Inside the sheet the sections lose their own frames, so the sheet reads as
+     one surface and the sections divide it with a line. */
+  #side section {
+    border: none; border-top: 1px solid var(--border); border-radius: 0;
+    background: none; backdrop-filter: none; padding: 12px 2px;
+  }
+  #side section:last-child { padding-bottom: 0; }
+  /* Five view buttons fit on one row, so the sheet stays short. */
+  .preset-grid { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+  .preset-grid .btn.small:last-child { grid-column: auto; }
+
+  /* The header becomes a three-row grid: the brand with the two icon buttons,
+     the piece picker, then the three file buttons. A grid row cannot overflow
+     its column, so no control leaves the screen at any width. */
+  #topbar {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 10px;
+  }
+  /* The two wrappers held the picker and the buttons in one row on a wide
+     screen. Here their children join the header grid instead. */
+  .top-right, .song-controls { display: contents; }
+  /* A wrapper with no box passes nothing, so its children take the click rule
+     that the header gives its own children. */
+  #topbar .brand, #topbar .combobox, #topbar .btn, #topbar .icon-link { pointer-events: auto; }
+  .brand { grid-row: 1; grid-column: 1 / span 4; }
+  #panelBtn { grid-row: 1; grid-column: 5; justify-self: end; }
+  .icon-link { grid-row: 1; grid-column: 6; justify-self: end; }
+  .song-controls .combobox { grid-row: 2; grid-column: 1 / -1; width: auto; max-width: none; }
+  #loadBtn { grid-row: 3; grid-column: 1 / span 2; }
+  #libraryBtn { grid-row: 3; grid-column: 3 / span 2; }
+  #searchBtn { grid-row: 3; grid-column: 5 / span 2; }
+  .song-controls .btn {
+    width: 100%; min-width: 0; padding: 8px 4px; font-size: 12px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .brand p { max-width: 100%; }
+
+  /* The transport takes two rows, so the seek bar keeps a width of its own on
+     the first row and the speed control sits on the second. */
+  #transport {
+    left: 12px; right: 12px; width: auto; max-width: none;
+    display: grid; grid-template-columns: auto auto 1fr;
+    grid-template-areas: "play time seek" "pedal speed speed";
+    align-items: center; gap: 8px 10px; padding: 10px 12px;
+  }
+  .btn.play { grid-area: play; }
+  .time { grid-area: time; min-width: 0; }
+  #seek { grid-area: seek; flex: none; width: 100%; min-width: 0; }
+  .pedal { grid-area: pedal; justify-self: start; }
+  .speed { grid-area: speed; justify-self: end; }
+  .speed label { display: none; }
+  .speed input { width: 110px; }
+
+  /* A 16px field stops iOS from zooming the page when the field takes focus. */
+  .combobox input, .search-form input, .lib-rename input { font-size: 16px; }
   .lib-row { flex-wrap: wrap; }
   .lib-actions { width: 100%; }
   .lib-actions .btn.small { flex: 1 1 auto; }
-  .search-form input { font-size: 16px; }
+  .lib-dialog { width: calc(100vw - 16px); max-height: 86dvh; }
+  .lib-list { max-height: 52dvh; }
 }
 
-/* On a narrow phone the brand and the controls cannot share one row, so the
-   controls move to a second row and the picker keeps the space it needs. */
+/* A wide screen shows the panel in the corner, so the sheet never opens. */
+@media (min-width: 721px) {
+  #panelScrim { display: none; }
+}
+
+/* A narrow phone gives the header's edge space back to the keys, and the
+   dialogs take almost the full width. */
 @media (max-width: 560px) {
-  #topbar { flex-wrap: wrap; padding-bottom: 4px; }
-  .top-right { width: 100%; }
-  .song-controls { flex: 1 1 auto; flex-wrap: wrap; }
-  /* The picker takes the first row, and the three buttons share the next one.
-     Equal widths and a smaller font keep all three on one line at 320px. */
-  .song-controls .combobox { flex: 1 1 100%; }
-  .song-controls .btn { flex: 1 1 0; min-width: 0; padding: 7px 6px; font-size: 12px; }
-  .brand p { max-width: 100%; }
+  #topbar { padding-left: 12px; padding-right: 12px; padding-bottom: 4px; }
+  .lib-dialog { padding: 14px; }
+}
+
+/* A phone held sideways has little height, so the header drops the piece label
+   and the sheet may use most of the window. */
+@media (max-height: 480px) and (max-width: 720px) {
+  .brand p { display: none; }
+  #topbar { padding-top: calc(8px + var(--safe-t)); row-gap: 6px; }
+  #side { max-height: 92dvh; }
 }

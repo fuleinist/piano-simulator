@@ -196,6 +196,14 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 | `?hands=procedural` | Use the primitive hands instead of the rigged mesh. |
 | `?hands=debug` | Draw the hand skeletons over the mesh. |
 
+### On a phone
+
+A narrow screen shows the panel as a sheet, so every control stays reachable. **Controls** opens the sheet. A tap on the dimmed stage closes it, and so does Escape. The sheet scrolls, so the Record section stays reachable on a short screen.
+
+The header stacks in three rows: the brand, the piece picker, and the file buttons. The transport takes two rows, so the seek bar keeps a width of its own. Every button is at least 44px tall, which is the size a thumb can hit.
+
+A phone held sideways keeps the panel in the corner. The panel scrolls inside its own box, so the last section stays on the screen.
+
 ## Architecture
 
 The code separates pure logic from rendering. You can test the logic in Node without a browser.
