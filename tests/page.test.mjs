@@ -130,9 +130,56 @@ test('a camera gesture keeps the view it reaches', () => {
   const handler = scene.slice(start, end);
   assert.doesNotMatch(handler, /_syncBaseFromCamera/,
     'the anchor is taken before the gesture runs, so the gesture snaps back');
-  // An idle frame holds the anchor on the view on screen.
-  assert.match(scene, /if \(!this\._settling && !follow\)/,
+  // An idle frame holds the anchor on the view on screen. A recording fit is
+  // the one more reason to move, and it stops as soon as the box fits again.
+  assert.match(scene, /if \(!this\._settling && !follow && !fitting\)/,
     'scene.js has no idle frame that leaves the camera alone');
+});
+
+test('a recording frame holds the keys the hands press', () => {
+  const scene = read('src/scene.js');
+  const main = read('src/main.js');
+  const framing = read('src/framing.js');
+  const recorder = read('src/recorder.js');
+
+  // The frame is a shape only: the fit is what keeps the music inside it.
+  assert.match(scene, /setFitBox\(/, 'scene.js has no recording fit');
+  assert.match(scene, /_fitNeed\(this\._fitBox\)/, 'the fit must be measured against the pressed keys');
+  // The camera never zooms in past the view the player chose, so the pull-back
+  // is a lower bound on the distance and not a new anchor.
+  assert.match(framing, /Math\.max\(1, fitDistance\(box, view\) \/ distance\)/,
+    'the fit must not zoom in past the chosen view');
+  // The view lift moves the subject down the frame, so one module owns it.
+  assert.match(framing, /export const VIEW_LIFT/, 'framing.js does not carry the view lift');
+  assert.doesNotMatch(scene, /const VIEW_LIFT\s*=/, 'scene.js keeps a second copy of the view lift');
+  assert.match(scene, /VIEW_LIFT, fitScale, nextFit/, 'scene.js does not read the lift from framing.js');
+
+  // A steady view comes from the committed fit, not from the need of the
+  // frame: the need changes with every chord, the commitment does not.
+  assert.match(scene, /nextFit\(this\._fitState, out, hold, dt\)/,
+    'the camera chases the need of the frame instead of a committed value');
+  assert.match(framing, /export function nextFit/, 'framing.js has no committed fit');
+
+  // A fit only exists while a capture runs. It widens on a three second lead,
+  // and it stays wide while the next ten seconds still need it.
+  assert.match(main, /const FIT_OUT_S = 3;/, 'the widen lead is not three seconds');
+  assert.match(main, /const FIT_HOLD_S = 10;/, 'the widen hold is not ten seconds');
+  assert.match(main, /scene\.setFitBox\(fit\.box, fit\.hold\)/,
+    'main.js does not hand both windows to the fit');
+  assert.match(framing, /export function upcomingSpan/, 'framing.js has no lead window');
+
+  // A capture must start with live audio: a MediaRecorder never adds a track
+  // later, and a context that is still suspended records silence.
+  assert.match(recorder, /await this\._resumeAudio\(\)/, 'the recorder does not resume the audio context');
+  const start = recorder.slice(recorder.indexOf('async start()'), recorder.indexOf('new MediaRecorder'));
+  assert.match(start, /await this\._resumeAudio\(\)/,
+    'the audio context must be running before the recorder is built');
+
+  // The hint is the only place a player learns the camera moves on its own.
+  assert.match(html, /The camera pulls back to keep the hands in frame/,
+    'index.html does not mention the recording fit');
+  assert.match(main, /The camera pulls back to keep the hands in frame/,
+    'main.js restores a hint that does not mention the fit');
 });
 
 test('every test file runs under npm test', () => {
