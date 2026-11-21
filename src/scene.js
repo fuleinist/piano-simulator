@@ -21,6 +21,12 @@ export const PRESETS = {
 // How far a following preset may slide from its anchor, in scene units.
 const FOLLOW_LIMIT = 22;
 
+// The paper takes the top of the window, so the stage sits below centre: the
+// whole view slides up the screen, which moves the piano down and leaves the
+// band clear of the keys. A share of the visible height, so it holds at any
+// window shape.
+const VIEW_LIFT = 0.11;
+
 export class Scene {
   constructor(canvas) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -62,8 +68,7 @@ export class Scene {
     this.controls.addEventListener('start', () => {
       this._dragging = true;
       this._base.follow = false;
-      this._base.pos.copy(this.camera.position);
-      this._base.target.copy(this.controls.target);
+      this._syncBaseFromCamera();
       this._followX = 0;
     });
     this.controls.addEventListener('end', () => { this._dragging = false; });
@@ -150,12 +155,24 @@ export class Scene {
     this._focusX = Number.isFinite(x) ? x : null;
   }
 
+  /**
+   * Take the camera as it stands as the new anchor. The lift belongs to the
+   * view, not to the anchor, so it comes off first: a drag would otherwise
+   * stack another lift on each frame.
+   */
+  _syncBaseFromCamera() {
+    const pos = new THREE.Vector3().copy(this.camera.position);
+    const target = new THREE.Vector3().copy(this.controls.target);
+    const lift = this._lift(pos, target);
+    this._base.pos.copy(pos).sub(lift);
+    this._base.target.copy(target).sub(lift);
+  }
+
   panBy(dx) {
     this._base.follow = false;
     this.camera.position.x += dx;
     this.controls.target.x += dx;
-    this._base.pos.copy(this.camera.position);
-    this._base.target.copy(this.controls.target);
+    this._syncBaseFromCamera();
     this._followX = 0;
   }
 
@@ -165,8 +182,7 @@ export class Scene {
     dir.setLength(len);
     this.camera.position.copy(this.controls.target).add(dir);
     this._base.follow = false;
-    this._base.pos.copy(this.camera.position);
-    this._base.target.copy(this.controls.target);
+    this._syncBaseFromCamera();
     this._followX = 0;
   }
 
@@ -234,9 +250,27 @@ export class Scene {
       this._base.target.y,
       this._base.target.z,
     );
+    // Slide the whole view up the screen axis. The camera and its target move
+    // together, so the angle never changes: only what sits in the frame.
+    const lift = this._lift(goalPos, goalTarget);
+    goalPos.add(lift);
+    goalTarget.add(lift);
     this.camera.position.lerp(goalPos, k);
     this.controls.target.lerp(goalTarget, k);
     this.controls.update();
+  }
+
+  /** The world vector that moves the view up the screen by VIEW_LIFT. */
+  _lift(pos, target) {
+    const dir = new THREE.Vector3().subVectors(target, pos).normalize();
+    const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0));
+    // A straight-down view gives no right vector, so pick the key axis.
+    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    right.normalize();
+    const screenUp = new THREE.Vector3().crossVectors(right, dir).normalize();
+    const visible = 2 * pos.distanceTo(target)
+      * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    return screenUp.multiplyScalar(visible * VIEW_LIFT);
   }
 
   render() {

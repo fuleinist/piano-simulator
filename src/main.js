@@ -31,7 +31,7 @@ const score = new ScoreView({ root: $('score'), svg: $('scoreSvg') });
 
 // The paper takes the notes of every piece the player loads, and the bar lines
 // that the file's own time signatures define.
-player.onLoad = (p) => score.setSong({ notes: p.notes, bars: p.barlines });
+player.onLoad = (p) => score.setSong({ notes: p.notes, bars: p.barlines, meta: p.scoreMeta });
 // The toggle starts checked, so the paper starts on screen.
 score.setVisible($('scoreToggle').checked);
 

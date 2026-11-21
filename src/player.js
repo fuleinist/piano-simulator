@@ -79,6 +79,13 @@ export class Player {
     // Bar lines come from the file's own time signatures and tempo map, so the
     // sheet marks the bars that the score marks.
     this.barlines = barTimes(midi.header, { duration: this.duration });
+    // The sheet needs the tempo and the time signatures to name a note value
+    // and to place a rest, so the file header travels with the notes.
+    this.scoreMeta = {
+      ppq: midi.header.ppq || 480,
+      tempos: midi.header.tempos || [],
+      timeSignatures: midi.header.timeSignatures || [],
+    };
     this.title = title;
     this.bars.load(assigned, this.pedalSpans);
     this.hands.load(assigned);
