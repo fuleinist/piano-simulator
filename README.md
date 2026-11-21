@@ -38,7 +38,9 @@ The band writes the symbols that a printed piano score uses. Each note takes the
 
 A beat with no note on a staff takes a rest. Two silent beats share a half rest, and a bar with no note takes a whole rest. A note still sounding fills its beat, so it takes no rest. The time signature sits beside the clefs and follows a change of signature.
 
-Bar lines come from the time signature and the tempo map of the file, so the bars follow a tempo change. The line spacing shrinks when the register is wide, so no note leaves the paper. The scroll speed follows the note density, so a fast passage keeps its notes apart.
+Every mark takes its place from the staff. A notehead sits on its line or space. A stem starts on the head it belongs to and ends on a fixed length, or on the beam. A beam runs from the first stem to the last, and the stems of the group take one direction from the average pitch. A whole rest hangs from the fourth line and a half rest sits on the middle line. The digits of the time signature fill the two spaces beside the middle line, and a clef centres on the middle line of its own staff.
+
+Bar lines come from the time signature and the tempo map of the file, so the bars follow a tempo change. The line spacing shrinks when the register is wide, so no note leaves the paper. The scroll speed follows the note density, so a fast passage keeps its notes apart. The band takes about a third of the window, and the stage sits below it.
 
 The note value comes from the length the file gives, rounded to the sixteenth grid. A note held past the next onset on its staff stops at that onset, because the band draws no tie.
 
@@ -105,7 +107,7 @@ The Internet Archive allows a browser to call its search API, but not its file d
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
 
 ### Camera and tempo
-The default view looks straight down at the keyboard at 90°, so key widths and hand spans read at their true size. Five presets are available: top, perform, front, side, and close. The front, side, and close views slide along the keys with the player, so the hands stay in frame. A manual drag or pan releases the follow until you pick a preset again. OrbitControls lets you rotate, zoom, and pan left and right along the keys. The speed slider sets the tempo from 0.25x to 2x. A seek slider moves to any point. A loop toggle repeats the piece.
+The default view looks straight down at the keyboard at 90°, so key widths and hand spans read at their true size. The stage sits a little below the centre of the window, and the sheet band takes the space above it. Five presets are available: top, perform, front, side, and close. The front, side, and close views slide along the keys with the player, so the hands stay in frame. A manual drag or pan releases the follow until you pick a preset again. OrbitControls lets you rotate, zoom, and pan left and right along the keys. The speed slider sets the tempo from 0.25x to 2x. A seek slider moves to any point. A loop toggle repeats the piece.
 
 ### Video recording
 The recorder captures the canvas and the audio to a WebM file. It uses the browser MediaRecorder API at 60 frames per second. The file name records the shape, for example `piano-9x16-2026-11-18T09-12-44.webm`.

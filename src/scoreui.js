@@ -6,8 +6,7 @@
 // captures the canvas only, so the view hides the paper while a capture runs.
 
 import {
-  BASS, BASS_MID_STEP, HEAD_RX, HEAD_RY, OPEN_RX, TREBLE, TREBLE_MID_STEP,
-  layoutScore, signatureAt,
+  BASS, BEAM_SPACE, BEAM_THICK, HEAD_RX, HEAD_RY, OPEN_RX, TREBLE, layoutScore, signatureAt,
 } from './score.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -20,7 +19,6 @@ const SVG = (name, attrs = {}) => {
 const CLEF = { treble: '\u{1D11E}', bass: '\u{1D122}' };
 const CLEF_FONT = '"Bravura", "Segoe UI Symbol", "Noto Music", serif';
 const ACC_FONT = '"Segoe UI Symbol", serif';
-const BEAM_THICK = 0.45; // beam line thickness, in line gaps
 const FLAG_LEN = 1.5; // flag length, in line gaps
 const SIG_FONT = '"Segoe UI Symbol", "Noto Music", serif';
 
@@ -34,27 +32,35 @@ function flagPath(stem, gap, index) {
   return `M ${x} ${y} C ${x + w} ${y + dir * len * 0.45}, ${x + w * 0.35} ${y + dir * len * 0.8}, ${x - w * 0.2} ${y + dir * len}`;
 }
 
-/** One rest, in paper coordinates. `y` is the middle line of the staff. */
+/** One rest, in paper coordinates. `y` is the line the rest reads from. */
 function restNode(rest, gap, x) {
   if (rest.symbol === 'whole' || rest.symbol === 'half') {
-    const height = 0.45 * gap;
-    // A whole rest hangs under the fourth line; a half rest sits on the third.
-    const y = rest.symbol === 'whole' ? rest.y - gap + 0.1 * gap : rest.y - height;
-    return SVG('rect', { class: 'sc-rest', x: x - 0.6 * gap, y, width: 1.2 * gap, height });
+    const height = 0.5 * gap;
+    // A whole rest hangs under the fourth line, and a half rest sits on the
+    // middle line, so each one reads from the line the layout gives it.
+    const y = rest.symbol === 'whole' ? rest.y : rest.y - height;
+    return SVG('rect', {
+      class: 'sc-rest sc-rest-block', x: x - 0.6 * gap, y, width: 1.2 * gap, height,
+    });
   }
   if (rest.symbol === 'eighth' || rest.symbol === 'sixteenth') {
+    // The hooks hang in the spaces above the middle line.
     const group = SVG('g');
-    group.append(
-      SVG('path', {
-        class: 'sc-rest',
-        d: `M ${x + 0.5 * gap} ${rest.y - 0.85 * gap} L ${x - 0.2 * gap} ${rest.y + 0.4 * gap}`,
-        'stroke-width': 0.2 * gap,
-        fill: 'none',
-      }),
-      SVG('circle', {
-        class: 'sc-rest-fill', cx: x + 0.1 * gap, cy: rest.y - 0.72 * gap, r: 0.15 * gap,
-      }),
-    );
+    const hooks = rest.symbol === 'sixteenth' ? 2 : 1;
+    for (let hook = 0; hook < hooks; hook++) {
+      const top = rest.y - 1.45 * gap + hook * 0.55 * gap;
+      group.append(
+        SVG('path', {
+          class: 'sc-rest',
+          d: `M ${x + 0.42 * gap} ${top} C ${x + 0.2 * gap} ${top + 0.45 * gap}, ${x - 0.05 * gap} ${rest.y - 0.35 * gap}, ${x - 0.32 * gap} ${rest.y + 0.3 * gap}`,
+          'stroke-width': 0.22 * gap,
+          fill: 'none',
+        }),
+        SVG('circle', {
+          class: 'sc-rest-fill', cx: x + 0.32 * gap, cy: top + 0.2 * gap, r: 0.2 * gap,
+        }),
+      );
+    }
     return group;
   }
   // A quarter rest reads as the classic zigzag, centred on the middle line.
@@ -66,22 +72,23 @@ function restNode(rest, gap, x) {
   });
 }
 
-// A glyph must be centred on a staff line, but a font file places its own ink
-// above and below the baseline. These metrics give the shift that puts the ink
+// A glyph must be centred on a staff line, but a font places its own ink above
+// and below the baseline. The measured box gives the shift that puts the ink
 // centre on the line, whatever font the browser falls back to.
-let measureContext = null;
-const METRICS = new Map();
-function glyphOffset(char, size, family) {
+const BASELINE = new Map();
+function centredBaseline(char, size, family, target, host) {
   const key = `${char}|${size}|${family}`;
-  if (METRICS.has(key)) return METRICS.get(key);
-  if (!measureContext) measureContext = document.createElement('canvas').getContext('2d');
-  measureContext.font = `${size}px ${family}`;
-  const metrics = measureContext.measureText(char);
-  const ascent = metrics.actualBoundingBoxAscent || size * 0.7;
-  const descent = metrics.actualBoundingBoxDescent || 0;
-  const offset = (ascent - descent) / 2;
-  METRICS.set(key, offset);
-  return offset;
+  let offset = BASELINE.get(key);
+  if (offset === undefined) {
+    const probe = SVG('text', { x: 0, y: 0, 'font-size': size, 'font-family': family });
+    probe.textContent = char;
+    host.appendChild(probe);
+    const box = probe.getBBox();
+    probe.remove();
+    offset = -(box.y + box.height / 2);
+    BASELINE.set(key, offset);
+  }
+  return target + offset;
 }
 
 export class ScoreView {
@@ -164,7 +171,9 @@ export class ScoreView {
 
   _build() {
     const width = Math.max(260, Math.round(this.root.clientWidth || window.innerWidth * 0.7));
-    const maxHeight = Math.min(216, Math.max(96, window.innerHeight * 0.28));
+    // The band is the first thing the eye needs, so it takes a third of the
+    // window. The camera sits lower, so a taller band stays clear of the keys.
+    const maxHeight = Math.min(280, Math.max(120, window.innerHeight * 0.38));
     const layout = layoutScore(this.notes, {
       bars: this.bars,
       width,
@@ -227,9 +236,12 @@ export class ScoreView {
     const yOf = (step, staff) => (staff === BASS ? staves.bassTopY : staves.trebleTopY)
       + ((staff === BASS ? staves.bassTop : staves.trebleTop) - step) * (gap / 2);
     const size = gap * 5;
-    for (const [staff, step] of [[TREBLE, TREBLE_MID_STEP], [BASS, BASS_MID_STEP]]) {
+    for (const staff of [TREBLE, BASS]) {
+      // The ink of a clef is centred on the middle line of its own staff.
+      const middle = yOf(staff === BASS ? staves.bassTop - 4 : staves.trebleTop - 4, staff);
       const clef = SVG('text', {
-        class: 'sc-clef', x: width * 0.34, y: yOf(step, staff) + glyphOffset(CLEF[staff], size, CLEF_FONT),
+        class: 'sc-clef', x: width * 0.34,
+        y: centredBaseline(CLEF[staff], size, CLEF_FONT, middle, this.svg),
         'font-size': size, 'text-anchor': 'middle',
       });
       clef.textContent = CLEF[staff];
@@ -237,22 +249,24 @@ export class ScoreView {
     }
 
     // The time signature sits right of the clefs, on both staves, and it follows
-    // the playhead when the piece changes signature.
-    const sigSize = gap * 1.9;
+    // the playhead when the piece changes signature. Each digit fills two of the
+    // spaces next to the middle line, as a printed score sets them.
+    const sigSize = gap * 2.3;
     this.sigNodes = [];
     for (const staff of [TREBLE, BASS]) {
-      const middle = yOf(staff === BASS ? BASS_MID_STEP : TREBLE_MID_STEP, staff);
+      const middle = yOf(staff === BASS ? staves.bassTop - 4 : staves.trebleTop - 4, staff);
       const pair = {};
-      for (const [key, offset] of [['top', -0.6], ['bottom', 0.6]]) {
+      for (const [key, target] of [['top', middle - gap], ['bottom', middle + gap]]) {
         const node = SVG('text', {
           class: 'sc-sig', x: width * 0.78, 'text-anchor': 'middle',
-          'font-size': sigSize, y: middle + offset * gap,
+          'font-size': sigSize, y: target,
         });
         this.gutter.appendChild(node);
-        pair[key] = node;
+        pair[key] = { node, target };
       }
       this.sigNodes.push(pair);
     }
+    this.sigKey = null;
     this._showSignature(null);
 
     const top = staves.trebleTopY;
@@ -273,9 +287,16 @@ export class ScoreView {
     if (this.sigKey === key) return;
     this.sigKey = key;
     for (const pair of this.sigNodes || []) {
-      pair.top.textContent = String(sig.beats);
-      pair.bottom.textContent = String(sig.unit);
+      this._setDigit(pair.top, String(sig.beats));
+      this._setDigit(pair.bottom, String(sig.unit));
     }
+  }
+
+  /** Put one digit of the signature on the space that belongs to it. */
+  _setDigit(cell, text) {
+    if (cell.node.textContent !== text) cell.node.textContent = text;
+    const size = this.layout.gap * 2.3;
+    cell.node.setAttribute('y', centredBaseline(text, size, SIG_FONT, cell.target, this.svg));
   }
 
   /** The staff lines stay put; each scroll block draws its own stretch. */
@@ -348,11 +369,14 @@ export class ScoreView {
       for (const head of glyph.heads) {
         if (head.accidental) {
           const size = gap * 1.7;
+          // The accidental reads from the same line as its notehead, and it
+          // keeps clear of the head so the two marks do not touch.
           const accidental = SVG('text', {
-            class: 'sc-acc', x: -rx * 1.5, 'text-anchor': 'middle',
-            y: head.y + glyphOffset('\u266F', size, ACC_FONT), 'font-size': size,
+            class: 'sc-acc', x: -(rx + 0.9 * gap), 'text-anchor': 'middle',
+            y: centredBaseline(head.accidental, size, ACC_FONT, head.y, this.svg),
+            'font-size': size,
           });
-          accidental.textContent = '\u266F';
+          accidental.textContent = head.accidental;
           node.appendChild(accidental);
         }
         const ellipse = SVG('ellipse', {
@@ -376,7 +400,9 @@ export class ScoreView {
     for (const mark of this.marks.get(index) || []) {
       if (mark.kind === 'beam') {
         for (let line = 0; line < mark.count; line++) {
-          const drop = line * BEAM_THICK * gap * (mark.up ? 1 : -1);
+          // The first line sits on the stem tips and each further line steps
+          // toward the heads by one thickness and one space.
+          const drop = line * (BEAM_THICK + BEAM_SPACE) * gap * (mark.up ? 1 : -1);
           block.appendChild(SVG('line', {
             class: 'sc-beam',
             x1: mark.x1 - x0, y1: mark.y1 + drop,

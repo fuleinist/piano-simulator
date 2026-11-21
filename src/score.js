@@ -27,8 +27,12 @@ export const MIN_GAP = 5.5; // narrowest line gap, in px
 export const HEAD_RX = 0.55; // notehead radius across, in line gaps
 export const HEAD_RY = 0.42; // notehead radius down, in line gaps
 export const OPEN_RX = 0.62; // a hollow head is wider, so the hole stays open
-export const DOT_GAP = 0.55; // space before an augmentation dot, in line gaps
+export const DOT_GAP = 0.7; // space before an augmentation dot, in line gaps
 export const STEM_LEN = 3.4; // stem length, in line gaps
+export const MIN_STEM = 2.5; // shortest stem a beam may leave, in line gaps
+export const BEAM_THICK = 0.45; // beam line thickness, in line gaps
+export const BEAM_SPACE = 0.25; // gap between two beam lines, in line gaps
+export const BEAM_SLOPE = 0.3; // steepest beam rise, in line gaps per gap of run
 // Extra line gaps between the two staves of the grand staff. With the two gaps
 // the pitch grid already gives, the staves sit six gaps apart, which is the
 // spacing a printed piano score uses.
@@ -490,24 +494,68 @@ function applyBeams(glyphs, {
       if (group.length < 2) continue; // a lone short note keeps its flag
       const meanStep = group.reduce((sum, g) => sum + g.meanStep, 0) / group.length;
       const up = meanStep < middleStep;
+      // The group decides the direction, so every stem turns the same way and
+      // takes the side of the head that matches it.
+      for (const glyph of group) glyph.stem = stemOf(glyph, up, gap, height);
+      // The beam runs stem to stem, not note to note: a beam that stopped at
+      // the note centre would stop one head short of the stem it belongs to.
+      const axes = group.map((glyph) => ({ glyph, x: glyph.x + glyph.stem.x }));
+      const firstX = axes[0].x;
+      const lastX = axes[axes.length - 1].x;
+      const run = lastX - firstX;
+      const tipAt = (y1, rise, x) => (run > 0 ? y1 + (rise * (x - firstX)) / run : y1);
+      // One straight line joins the group, and its rise is limited, so a wide
+      // leap does not tilt the beam past the angle a score allows.
+      const first = axes[0].glyph.stem.y2;
+      const rise = clamp(
+        axes[axes.length - 1].glyph.stem.y2 - first,
+        -BEAM_SLOPE * Math.abs(run),
+        BEAM_SLOPE * Math.abs(run),
+      );
+      // A beam must not cut a stem below its minimum length. The whole line
+      // moves away from the heads until every stem has room.
+      let shift = 0;
+      let worst = 0;
+      for (const { glyph, x } of axes) {
+        const limit = up ? glyph.bottom - MIN_STEM * gap : glyph.top + MIN_STEM * gap;
+        const at = tipAt(first, rise, x);
+        const short = up ? at - limit : limit - at;
+        if (short > worst) worst = short;
+      }
+      if (worst > 0) shift = up ? -worst : worst;
+      // Keep the beam inside the paper.
+      const tips = axes.map(({ x }) => tipAt(first, rise, x));
+      const edge = BEAM_THICK * gap;
+      if (Math.min(...tips) + shift < edge) shift = edge - Math.min(...tips);
+      if (Number.isFinite(height) && Math.max(...tips) + shift > height - edge) {
+        shift = Math.min(shift, height - edge - Math.max(...tips));
+      }
+      const y1 = first + shift;
+      const y2 = y1 + rise;
       const id = beams.length;
       const count = Math.max(...group.map((g) => g.value.flags));
-      for (const glyph of group) {
-        glyph.stem = stemOf(glyph, up, gap, height);
+      // Every stem ends on the beam line, so the group reads as one shape. The
+      // group decides the direction, so a stem that wanted the other way turns
+      // round: its head end moves to the matching edge of the chord.
+      for (const { glyph, x } of axes) {
+        glyph.stem.up = up;
+        glyph.stem.y1 = up ? glyph.bottom : glyph.top;
+        glyph.stem.y2 = tipAt(y1, rise, x);
+        glyph.stem.tip = glyph.stem.y2;
         glyph.beam = { id, count };
         glyph.flags = 0; // the beam replaces the flags
       }
-      const last = group[group.length - 1];
       beams.push({
         kind: 'beam',
         staff,
         time: group[0].time,
-        x1: group[0].x,
-        y1: group[0].stem.y2,
-        x2: last.x,
-        y2: last.stem.y2,
+        x1: firstX,
+        y1,
+        x2: lastX,
+        y2,
         count,
         up,
+        slope: run > 0 ? rise / run : 0,
       });
     }
   }
@@ -579,13 +627,16 @@ function layoutRests(glyphs, {
             span = 2;
           }
           const time = beats[at].t0;
+          // A whole rest hangs from the fourth line; every other rest reads
+          // from the middle line of its staff.
+          const anchor = symbol === 'whole' ? middleStep - 2 : middleStep;
           rests.push({
             kind: 'rest',
             staff,
             symbol,
             time,
             x: time * pxPerSecond,
-            y: yOfStep(middleStep, staff),
+            y: yOfStep(anchor, staff),
             beats: span,
           });
           at += span;

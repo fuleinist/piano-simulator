@@ -63,6 +63,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; co
 .sc-beam { stroke: var(--ink); stroke-linecap: butt; }
 .sc-dot { fill: var(--ink); }
 .sc-rest { stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; }
+.sc-rest-block { fill: var(--ink); stroke: none; }
 .sc-rest-fill { fill: var(--ink); }
 .sc-sig { fill: var(--ink); font-family: "Segoe UI Symbol", "Noto Music", serif; font-weight: 600; }
 .sc-stem { stroke: var(--ink); stroke-width: 1.6; }

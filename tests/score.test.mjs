@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  BASS, MAX_GAP, MIN_GAP, PAD, TREBLE, barTimes, layoutScore, ledgerStepsOf, noteValueOf,
-  pitchOf, signatureAt, staffOf, ticksToSeconds,
+  BASS, BEAM_SLOPE, MAX_GAP, MIN_GAP, MIN_STEM, PAD, TREBLE, barTimes, layoutScore, ledgerStepsOf,
+  noteValueOf, pitchOf, signatureAt, staffOf, ticksToSeconds,
 } from '../src/score.js';
 
 const read = (rel) => fs.readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
@@ -334,6 +334,48 @@ test('a beamed group takes one stem direction from its average pitch', () => {
     if (!glyph.beam) continue;
     assert.equal(glyph.stem.up, sheet.beams[glyph.beam.id].up, 'every stem in a beam must agree with its beam');
   }
+});
+
+test('a beam runs stem to stem and every stem ends on it', () => {
+  const sheet = sheetOf([
+    note(72, 0, 0.25), note(79, 0.25, 0.25), note(84, 0.5, 0.25), note(76, 0.75, 0.25),
+  ]);
+  const { gap } = sheet;
+  assert.ok(sheet.beams.length >= 1, 'the run needs a beam');
+  for (const [id, beam] of sheet.beams.entries()) {
+    const members = sheet.glyphs.filter((g) => g.beam && g.beam.id === id);
+    assert.ok(members.length >= 2, 'a beam joins at least two notes');
+    const first = members[0];
+    const last = members[members.length - 1];
+    // A beam that stopped at the note centre would end one head short of the
+    // stem it belongs to.
+    assert.equal(beam.x1, first.x + first.stem.x, 'the beam must start on the first stem');
+    assert.equal(beam.x2, last.x + last.stem.x, 'the beam must end on the last stem');
+    const slope = (beam.y2 - beam.y1) / (beam.x2 - beam.x1);
+    for (const glyph of members) {
+      const at = beam.y1 + slope * ((glyph.x + glyph.stem.x) - beam.x1);
+      assert.ok(Math.abs(glyph.stem.y2 - at) < 1e-6, 'a stem must end on the beam line');
+      const length = Math.abs(glyph.stem.y2 - glyph.stem.y1) / gap;
+      assert.ok(length >= MIN_STEM - 1e-6, `a stem of ${length.toFixed(2)} gaps is too short`);
+      const headEnd = glyph.stem.up ? glyph.bottom : glyph.top;
+      assert.equal(glyph.stem.y1, headEnd, 'a stem must start on the head that belongs to it');
+      const away = glyph.stem.up ? glyph.stem.y2 < glyph.stem.y1 : glyph.stem.y2 > glyph.stem.y1;
+      assert.ok(away, 'a stem must point away from its head');
+    }
+    assert.ok(Math.abs(beam.slope) <= BEAM_SLOPE + 1e-6, 'a beam must not tilt past the limit');
+  }
+});
+
+test('a whole rest hangs from the fourth line and a half rest sits on the middle', () => {
+  const sheet = sheetOf([
+    note(72, 0, 0.5), note(72, 1.5, 0.5), note(72, 4.5, 0.5),
+  ], { duration: 5 });
+  const treble = sheet.rests.filter((r) => r.staff === TREBLE);
+  const middle = sheet.staves.trebleTopY + 2 * sheet.gap;
+  const half = treble.find((r) => r.symbol === 'half');
+  const whole = treble.find((r) => r.symbol === 'whole');
+  assert.ok(Math.abs(half.y - middle) < 1e-6, 'a half rest reads from the middle line');
+  assert.ok(Math.abs(whole.y - (middle + sheet.gap)) < 1e-6, 'a whole rest reads from the fourth line');
 });
 
 test('a silent beat takes a rest, and a held note takes none', () => {
