@@ -82,6 +82,59 @@ test('the global shortcuts do not fire while the picker has focus', () => {
   assert.match(guard, /input, textarea, select/, 'the typing guard dropped the plain field check');
 });
 
+test('the view pad spins the pan around the zoom pair', () => {
+  // Pan is an angle spin and not a slide, so each press carries its degrees.
+  const pads = [...html.matchAll(/<button\b[^>]*\bdata-orbit="([^"]+)"[^>]*>/g)];
+  assert.equal(pads.length, 2, 'index.html needs two pan spins');
+  assert.deepEqual(pads.map((m) => m[1]).sort(), ['-12', '12'], 'the pan pair needs both directions');
+  for (const m of pads) {
+    // An icon-only button carries no text for a screen reader.
+    assert.ok(attr(m[0], 'aria-label'), 'every pan spin needs an aria-label');
+    assert.equal(attr(m[0], 'aria-label'), attr(m[0], 'title'));
+  }
+  // The two circle arrows carry the meaning, and the icon needs no label of
+  // its own because the button names the action.
+  assert.match(html, /<circle\b[^>]*\bcx="8"[^>]*\bcy="8"[^>]*\br="5"[^>]*\bstroke-dasharray=/,
+    'no circle-arrow mark in index.html');
+  assert.match(html, /<path\b[^>]*\bd="M8\.3 1\.8L10\.5 3L8\.3 4\.2Z"/,
+    'the circle arrow needs its head');
+  assert.equal((html.match(/scale\(-1,1\) translate\(-16,0\)/g) || []).length, 1,
+    'one circle arrow must be the mirrored copy');
+
+  const open = html.indexOf('<div class="viewpad">');
+  assert.ok(open > 0, 'index.html carries no .viewpad');
+  const pad = html.slice(open, html.indexOf('</div>', open));
+  assert.ok(pad.includes('id="zoomIn"') && pad.includes('id="zoomOut"'), 'the zoom pair belongs in the pad');
+  assert.match(css, /\.viewpad\s*\{/, 'no .viewpad rule in styles.css');
+
+  const main = read('src/main.js');
+  assert.match(main, /\[data-orbit\]/, 'main.js does not wire the pan spins');
+  assert.match(main, /scene\.orbitBy\(/, 'main.js calls no orbit spin');
+});
+
+test('a camera gesture keeps the view it reaches', () => {
+  const scene = read('src/scene.js');
+  assert.match(scene, /orbitBy\(deg\)/, 'scene.js has no orbit spin');
+  // A spin turns the angle and keeps the distance.
+  const spin = scene.slice(scene.indexOf('orbitBy(deg)'), scene.indexOf('zoomBy(factor)'));
+  assert.match(spin, /_base\.pos/, 'a spin must move the anchor');
+  assert.doesNotMatch(spin, /radius|distance/i, 'a spin must not change the distance');
+  assert.match(scene, /_settling/, 'scene.js has no travel flag');
+
+  // The anchor must not be taken from the camera before the gesture runs.
+  // That copy is the view the gesture started from, so the preset lerp pulls
+  // the view back and every drag, zoom, or spin is lost.
+  const start = scene.indexOf("addEventListener('start'");
+  const end = scene.indexOf("addEventListener('end'");
+  assert.ok(start > 0 && end > start, 'scene.js has no gesture handlers');
+  const handler = scene.slice(start, end);
+  assert.doesNotMatch(handler, /_syncBaseFromCamera/,
+    'the anchor is taken before the gesture runs, so the gesture snaps back');
+  // An idle frame holds the anchor on the view on screen.
+  assert.match(scene, /if \(!this\._settling && !follow\)/,
+    'scene.js has no idle frame that leaves the camera alone');
+});
+
 test('every test file runs under npm test', () => {
   const dir = new URL('../tests/', import.meta.url);
   const suites = fs.readdirSync(dir).filter((f) => f.endsWith('.test.mjs'));

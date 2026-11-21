@@ -107,7 +107,9 @@ The Internet Archive allows a browser to call its search API, but not its file d
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
 
 ### Camera and tempo
-The default view looks straight down at the keyboard at 90°, so key widths and hand spans read at their true size. The stage sits a little below the centre of the window, and the sheet band takes the space above it. Five presets are available: top, perform, front, side, and close. The front, side, and close views slide along the keys with the player, so the hands stay in frame. A manual drag or pan releases the follow until you pick a preset again. OrbitControls lets you rotate, zoom, and pan left and right along the keys. The speed slider sets the tempo from 0.25x to 2x. A seek slider moves to any point. A loop toggle repeats the piece.
+The default view looks straight down at the keyboard at 90°, so key widths and hand spans read at their true size. The stage sits a little below the centre of the window, and the sheet band takes the space above it. Five presets are available: top, perform, front, side, and close. The front, side, and close views slide along the keys with the player, so the hands stay in frame.
+
+A drag, a wheel zoom, or a pan holds the view that you reach. A preset button resets the pan, the tilt, and the zoom. A manual change also releases the follow until you pick a preset again. OrbitControls handles the drag, the wheel zoom, and the right-drag pan. Two circle arrows beside the zoom buttons turn the view angle about the vertical axis. They keep the distance and the target, so the picture turns and does not shift. The speed slider sets the tempo from 0.25x to 2x. A seek slider moves to any point. A loop toggle repeats the piece.
 
 ### Video recording
 The recorder captures the canvas and the audio to a WebM file. It uses the browser MediaRecorder API at 60 frames per second. The file name records the shape, for example `piano-9x16-2026-11-18T09-12-44.webm`.
@@ -219,6 +221,7 @@ Add them with `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE
 | Mouse drag | Rotate the camera. |
 | Mouse wheel | Zoom in and out. |
 | Right drag | Move the view left and right along the keys. |
+| Pan arrows | Turn the view angle about the vertical axis. The camera keeps its distance, so the picture turns and does not shift. |
 | Frame buttons (16:9, 9:16) | Set the shape of the video. The stage shows the frame for 6 seconds. |
 | Record | Save a WebM video with audio. The recording stops when the piece ends. |
 | `?hands=procedural` | Use the primitive hands instead of the rigged mesh. |
@@ -240,7 +243,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 |---|---|
 | `src/layout.js` | Key geometry for all 88 keys. No Three.js import. |
 | `src/fingering.js` | Hand split, chord grouping, and finger assignment. No Three.js import. |
-| `src/scene.js` | Renderer, lights, camera presets, and OrbitControls. |
+| `src/scene.js` | Renderer, lights, camera presets, the camera anchor, and OrbitControls. |
 | `src/piano.js` | The keyboard, the keys, and the press animation. |
 | `src/bars.js` | The depth-travelling note bars and the pedal lanes. |
 | `src/pedals.js` | Pedal parsing, the hold state, and the lane geometry. No Three.js import. |
@@ -272,7 +275,7 @@ The code separates pure logic from rendering. You can test the logic in Node wit
 npm test
 ```
 
-`npm test` runs thirteen unit suites and the smoke test. The source test checks the licence labels, the result shape, the fan-out timeout, and the partial-failure rule. The proxy test checks the address allowlist, the origin check, the size cap, the rate limit, and the cache. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The score test checks the staff position of a pitch, the ledger-line rule, the chord grouping, the bar-line times across a tempo change, and the page wiring. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. It also lays out the score of all 18 MIDIs and asserts that every note stays on the paper. All 18 pieces pass.
+`npm test` runs fourteen unit suites and the smoke test. The source test checks the licence labels, the result shape, the fan-out timeout, and the partial-failure rule. The proxy test checks the address allowlist, the origin check, the size cap, the rate limit, and the cache. The search test checks filtering, ranking, and the highlight ranges. The library test checks the content hash, the record shape, the sort order, and the quota-error test. The rig test checks the hand calibration, finger proportions, knuckle fan, and key contact against the bind pose in `tests/fixtures/`. The frames test checks the two video shapes and the fit maths. The key-light and chord tests check the key glow and the chord window. The fingering test checks the hand split against the staff rule, including a left-hand octave that sounds with the right hand. The pedal test checks the three control numbers, the span parsing, and the hold rule of each pedal. The score test checks the staff position of a pitch, the ledger-line rule, the chord grouping, and the bar-line times across a tempo change. It also checks the page wiring. The page test checks the pan pad, the view presets, and the camera anchor rule. The smoke test checks the key layout, reads the pedal spans of all 18 MIDIs, and runs the fingering engine on all 18 MIDIs. It asserts that no hand span exceeds 19 semitones. It also lays out the score of all 18 MIDIs and asserts that every note stays on the paper. All 18 pieces pass.
 
 Regenerate the rig fixtures after changing an asset:
 
