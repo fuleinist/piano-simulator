@@ -5,8 +5,9 @@
 // Method:
 //  1. Split notes between hands by staff. A MIDI track is the closest thing a
 //     file has to a staff, so a track that names its hand keeps that hand for
-//     every note. A file with no staff evidence falls back to the register rule
-//     at middle C, chord by chord.
+//     every note, and a file that names no hand falls back to what its tracks
+//     say with their registers, then to the register at middle C, chord by
+//     chord.
 //  2. Group each hand's notes into chords (onsets within CHORD_WINDOW).
 //  3. Beam search over finger assignments. Cost favours small hand shifts,
 //     comfortable spans, finger reuse and pitch-ordered fingers.
@@ -34,12 +35,17 @@ function median(arr) {
 // --- Step 1: hand split -------------------------------------------------
 // A score divides the hands by staff, not by clef or register: the lower staff
 // is the left hand even when its notes climb above middle C. A MIDI file has no
-// staff, so a track stands in for one. Two kinds of evidence decide a chord.
+// staff, so three kinds of evidence stand in for one.
 //   1. A track name that names a hand ("Piano right", "Accompaniment left").
 //      This is direct evidence of a staff, so it holds across the whole track.
-//   2. The chord's own register, when no track names a hand. A chord wholly
-//      above middle C belongs to the right hand, and a chord wholly below it to
-//      the left. A chord that straddles middle C stays on one hand.
+//   2. The track's own register, when no track in the file names a hand. One
+//      hand cannot sound two notes beyond its reach at one instant, so a track
+//      that never does is one hand's part, and the hand that reaches its
+//      register keeps every note of it (see registerSide).
+//   3. The chord's own register, when neither of the above names a staff. A
+//      chord wholly above middle C belongs to the right hand, and a chord
+//      wholly below it to the left. A chord that straddles middle C stays on
+//      one hand.
 // A staff split that would put the left hand above the right is refused,
 // because a MIDI file cannot mark a real hand crossing. The register decides
 // instead, so the two hands never pass through each other.
@@ -49,6 +55,10 @@ function median(arr) {
 const MAX_SPAN = 15;
 const NOTE_MAX = 5;
 const MIDDLE_C = 60;
+// A hand cannot sound two notes this far apart at one instant: 19 semitones is
+// an octave and a fifth, past every reach. A track that does is carrying both
+// hands at once, so its register names no staff.
+const TWO_HAND_SPAN = 19;
 const spanOf = (ns) => ns[ns.length - 1].midi - ns[0].midi;
 
 const SIDE_WORDS = {
@@ -64,6 +74,46 @@ function nameSide(name) {
     if (tokens.some((t) => SIDE_WORDS[side].has(t))) return side;
   }
   return null;
+}
+
+// Middle pitch of a track, averaging the two middle notes of an even count so
+// the value lands between them instead of on the upper one.
+function middlePitch(ns) {
+  const s = ns.map((x) => x.midi).sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// The staff a track's register implies, or null when the register names none.
+// A file that names no hand still tends to keep one hand per track, and that is
+// evidence worth having: an accompaniment that climbs over middle C stays with
+// the left hand instead of handing its top notes to the right.
+//
+// The register only speaks for a track that is one voice, and only when another
+// track exists to divide against.
+//   - A track that sounds two notes beyond one hand's reach at the same instant
+//     carries both hands at once — a whole piano part written on a single track
+//     — and its average register says nothing about either.
+//   - A file with a single track divides nothing either: that track holds the
+//     whole part, and its register cannot say which hand plays what.
+function registerSide(ns, tracks) {
+  if (tracks < 2) return null;
+  const sorted = [...ns].sort((a, b) => a.time - b.time);
+  for (let i = 0; i < sorted.length;) {
+    let j = i;
+    let lo = sorted[i].midi;
+    let hi = sorted[i].midi;
+    while (j + 1 < sorted.length && sorted[j + 1].time - sorted[i].time <= CHORD_WINDOW) {
+      j++;
+      lo = Math.min(lo, sorted[j].midi);
+      hi = Math.max(hi, sorted[j].midi);
+    }
+    if (hi - lo > TWO_HAND_SPAN) return null;
+    i = j + 1;
+  }
+  const med = middlePitch(ns);
+  if (med === MIDDLE_C) return null;
+  return med < MIDDLE_C ? 'L' : 'R';
 }
 
 // Group a chord by staff. A note with no staff takes the nearer staff by pitch,
@@ -102,18 +152,35 @@ export function splitHands(notes) {
     if (!byTrack.has(n.track)) byTrack.set(n.track, []);
     byTrack.get(n.track).push(n);
   }
-  // The staff a track declares in its title. A track with no name has no staff
-  // evidence, and its chords fall back to the register rule below.
+  // The staff each track gives us. A title that names a hand is direct
+  // evidence. When no title in the file names one, a track's own register
+  // stands in: a file that keeps one voice per track is telling us where the
+  // hands are, and an accompaniment that climbs over middle C still belongs to
+  // the left hand (see registerSide).
   const namedSide = new Map();
   for (const [track, ns] of byTrack) namedSide.set(track, nameSide(ns[0].trackName));
+  const titled = [...namedSide.values()].some(Boolean);
+  const trackSide = new Map();
+  for (const [track, ns] of byTrack) {
+    trackSide.set(track, namedSide.get(track) || (titled ? null : registerSide(ns, byTrack.size)));
+  }
 
-  const out = notes.map((n) => ({ ...n }));
+  // Two tracks sounding one key at one instant is one note, and the split reads
+  // onsets, so the duplicates merge here. The tracks are read first on purpose:
+  // a duplicate dropped before the registers are measured would leave its track
+  // short of the notes that place it on a hand.
+  const out = dedup(notes);
   const chords = groupChords(out);
 
   for (const chord of chords) {
     const ns = chord.notes; // pitch-ordered
     const n = ns.length;
-    let staff = ns.map((x) => namedSide.get(x.track));
+    let staff = ns.map((x) => trackSide.get(x.track));
+    // An inferred staff speaks for the chord only when it covers every note.
+    // On a chord it covers in part, the notes it misses would follow the
+    // nearer staff, and a bass note sounding under a right-hand melody would
+    // cross to the right hand. The register decides such a chord instead.
+    if (!titled && !staff.every(Boolean)) staff = staff.map(() => null);
     if (staff.some(Boolean)) {
       // The file names a staff for at least one note of this chord. Keep every
       // note with its own staff, unless a staff group is beyond one hand.
@@ -326,7 +393,10 @@ function dedup(notes) {
 }
 
 export function assignFingering(notes) {
-  const split = splitHands(dedup(notes));
+  // The split merges the doubled notes itself, after reading the tracks: a
+  // duplicate collapsed before that would leave one track short of its own
+  // notes and shift the register that names its hand.
+  const split = splitHands(notes);
   assignHand('L', split.filter((n) => n.hand === 'L'));
   assignHand('R', split.filter((n) => n.hand === 'R'));
   // Safety: every note must carry a valid assignment.

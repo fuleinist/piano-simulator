@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { splitHands } from '../src/fingering.js';
+import { splitHands, assignFingering } from '../src/fingering.js';
 
 const note = (over) => ({ midi: 60, time: 0, duration: 0.5, velocity: 0.6, track: 0, ...over });
 
@@ -104,4 +104,88 @@ test('a track name that names no hand leaves the register in charge', () => {
   ]);
   assert.deepEqual(at(out, 40), ['L']);
   assert.deepEqual(at(out, 80), ['R']);
+});
+
+// --- A file that names no hand, but keeps one part per track ------------
+// A file can leave every track unnamed and still say where the hands are: if a
+// track never sounds two notes beyond one hand's reach at the same instant, it
+// is one hand's part, and its register names that hand. Comptine d'un autre été
+// and the Yiruma files are written this way, and before the register stood in
+// their low notes crossed to the right hand whenever a melody note sounded with
+// them.
+
+test('a bass track keeps its notes when a melody track sounds over it', () => {
+  // Two notes at one instant from two tracks are two voices, not one chord. The
+  // chord average landed on the melody note and gave the bass note away.
+  const out = splitHands([
+    note({ midi: 59, track: 0, trackName: 'piano1' }),
+    note({ midi: 67, track: 2, trackName: 'piano3' }),
+  ]);
+  assert.deepEqual(at(out, 59), ['L']);
+  assert.deepEqual(at(out, 67), ['R']);
+});
+
+test('an accompaniment that climbs over middle C stays on the left', () => {
+  // Kiss the Rain: the left hand arpeggio reaches above middle C and sounds at
+  // the same instant as the melody. Judged note by note it reads as the right
+  // hand with the tune; judged as the track it plays in, it is the left hand.
+  const notes = [];
+  ['48', '55', '62', '70'].forEach((midi, i) => {
+    notes.push(note({ midi: Number(midi), time: i * 0.25, track: 1, trackName: 'Track 2' }));
+  });
+  ['76', '81', '84', '88'].forEach((midi, i) => {
+    notes.push(note({ midi: Number(midi), time: i * 0.25, track: 0, trackName: 'Piano' }));
+  });
+  const out = splitHands(notes);
+  assert.deepEqual(at(out, 70), ['L']);
+  assert.deepEqual(out.filter((n) => n.track === 1).map((n) => n.hand),
+    ['L', 'L', 'L', 'L'], 'the whole accompaniment stays on one hand');
+});
+
+test('a track that sounds both hands at once names no hand', () => {
+  // A whole piano part on one track, beside a second track that is clearly one
+  // hand. The part sounds a bass note under the melody at the same instant,
+  // which no hand can do. Its median is high, so if the reach check did not
+  // refuse it the two-hands-in-one-track file would all go to the right hand.
+  const out = splitHands([
+    note({ midi: 48, time: 0 }), note({ midi: 84, time: 0 }),
+    note({ midi: 88, time: 1 }), note({ midi: 90, time: 1 }),
+    note({ midi: 40, time: 3, track: 1, trackName: 'Bass' }),
+  ]);
+  assert.deepEqual(at(out, 48), ['L']);
+  assert.deepEqual(at(out, 84), ['R']);
+});
+
+test('a file with one track leaves the register in charge', () => {
+  // Nothing divides here, so no track can name a staff: a lone bass note and a
+  // melody note on the one track still go to the hands their pitch names.
+  const out = splitHands([note({ midi: 35, time: 1 }), note({ midi: 72, time: 2 })]);
+  assert.deepEqual(at(out, 35), ['L']);
+  assert.deepEqual(at(out, 72), ['R']);
+});
+
+test('a named hand outranks the register of its track', () => {
+  // Direct evidence wins: this track sits below middle C and is still right hand.
+  const out = splitHands([
+    note({ midi: 45, track: 0, trackName: 'Piano right' }),
+    note({ midi: 47, track: 0, trackName: 'Piano right' }),
+  ]);
+  assert.deepEqual(hands(out), ['R', 'R']);
+});
+
+test('a doubled bass line does not move the track that carries it', () => {
+  // Comptine writes one ostinato across two tracks. Merging the doubled notes
+  // before the split stripped one track of every low note it had, moved its
+  // register above middle C, and handed the accompaniment to the right hand.
+  const notes = [];
+  for (let i = 0; i < 8; i++) {
+    notes.push(note({ midi: 50, time: i * 0.5, track: 0, trackName: 'piano1' }));
+    notes.push(note({ midi: 50, time: i * 0.5, track: 1, trackName: 'piano2' }));
+    notes.push(note({ midi: 62, time: i * 0.5, track: 1, trackName: 'piano2' }));
+    notes.push(note({ midi: 74 + (i % 2) * 2, time: i * 0.5, track: 2, trackName: 'piano3' }));
+  }
+  const out = assignFingering(notes);
+  const right = out.filter((n) => n.hand === 'R');
+  assert.ok(right.length, 'the melody still plays');
+  assert.ok(right.every((n) => n.track === 2), 'only the melody track reaches the right hand');
 });
