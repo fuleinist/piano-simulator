@@ -78,6 +78,23 @@ for (const f of files) {
   if (badWrist) fail(`${f}: ${badWrist} non-finite wristX`);
   if (bigSpan) fail(`${f}: ${bigSpan} chords span > 19 semitones`);
 
+  // Track check. A track that never leaves the bass register is one hand's part,
+  // so it cannot reach the right hand: that is the "low key on the high row" a
+  // player notices. A named hand outranks the register, so those tracks are left
+  // to their title.
+  const byTrack = new Map();
+  for (const n of assigned) {
+    if (!byTrack.has(n.track)) byTrack.set(n.track, []);
+    byTrack.get(n.track).push(n);
+  }
+  let bassOnRight = 0;
+  for (const ns of byTrack.values()) {
+    if (ns.some((n) => n.midi >= 60 || n.hand === undefined)) continue;
+    if (/left|right|\blh\b|\brh\b|bass|treble/i.test(ns[0].trackName || '')) continue;
+    bassOnRight += ns.filter((n) => n.hand === 'R').length;
+  }
+  if (bassOnRight) fail(`${f}: ${bassOnRight} bass notes played by the right hand`);
+
   // Bar check. A bar holds the music of its own note, and it stops at the next
   // note on the same key. Two notes on one key draw bars in one column, so a
   // bar that outran its note paints over the bar behind it.
@@ -193,8 +210,9 @@ for (const f of files) {
     `pedals=${used.join(' ') || 'none'} ` +
     `bars=${clipped}clipped/${longestBar.toFixed(1)}u ` +
     `sheet=${layout.glyphs.length}g/${bars.length}b gap=${layout.gap.toFixed(2)} ` +
-    `beam=${beams} rest=${rests} dot=${dotted}` +
-    (badFinger || badWrist || bigSpan || badBars || overBar || badPedal || badSheet ? '  [FAIL]' : '  OK')
+    `beam=${beams} rest=${rests} dot=${dotted} ` +
+    `bassOnRight=${bassOnRight}` +
+    (badFinger || badWrist || bigSpan || bassOnRight || badBars || overBar || badPedal || badSheet ? '  [FAIL]' : '  OK')
   );
 }
 
