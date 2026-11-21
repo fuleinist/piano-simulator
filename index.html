@@ -77,11 +77,31 @@
         <button data-view="side" class="btn small">Side</button>
         <button data-view="close" class="btn small">Close</button>
       </div>
-      <div class="row">
-        <button id="panL" class="btn small" title="Move left">◀</button>
-        <button id="zoomOut" class="btn small" title="Zoom out">−</button>
-        <button id="zoomIn" class="btn small" title="Zoom in">+</button>
-        <button id="panR" class="btn small" title="Move right">▶</button>
+      <div class="viewpad">
+        <!-- Pan spins the view angle around the vertical axis, so the icons are
+             the two circle arrows. The camera keeps its distance and its
+             target. The left icon is the clockwise path mirrored. -->
+        <button class="btn small pad" type="button" data-orbit="12"
+                aria-label="Pan the view left" title="Pan the view left">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+            <g transform="scale(-1,1) translate(-16,0)" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round">
+              <circle cx="8" cy="8" r="5" stroke-dasharray="23.6 7.85" />
+              <path d="M8.3 1.8L10.5 3L8.3 4.2Z" fill="currentColor" stroke="none" />
+            </g>
+          </svg>
+        </button>
+        <button class="btn small pad" type="button" data-orbit="-12"
+                aria-label="Pan the view right" title="Pan the view right">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+            <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <circle cx="8" cy="8" r="5" stroke-dasharray="23.6 7.85" />
+              <path d="M8.3 1.8L10.5 3L8.3 4.2Z" fill="currentColor" stroke="none" />
+            </g>
+          </svg>
+        </button>
+        <button id="zoomOut" class="btn small" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+        <button id="zoomIn" class="btn small" type="button" aria-label="Zoom in" title="Zoom in">+</button>
       </div>
       <p class="hint hint-fine">Drag to orbit · scroll to zoom · right-drag to pan</p>
       <p class="hint hint-coarse">Drag to orbit · pinch to zoom · two fingers to pan</p>

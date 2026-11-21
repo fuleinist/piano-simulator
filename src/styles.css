@@ -234,6 +234,12 @@ select { max-width: 320px; min-width: 0; flex: 0 1 auto; }
   color: var(--muted); margin: 0 0 9px; font-weight: 600; }
 .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
 .preset-grid .btn.small:last-child { grid-column: span 2; }
+/* The view pad: the pan pair sits above the zoom pair. Pan spins the view
+   angle about the vertical axis, so its glyphs are the two circle arrows. */
+.viewpad { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.viewpad .pad { padding: 6px 10px; font-size: 15px; line-height: 1.2; }
+/* The icon carries no text, so it centres itself in the button. */
+.viewpad .pad svg { display: block; margin: 0 auto; }
 .row { display: flex; gap: 6px; }
 .frame-row { margin-bottom: 8px; }
 .hint { font-size: 11px; color: var(--muted); margin: 8px 0 0; line-height: 1.4; }

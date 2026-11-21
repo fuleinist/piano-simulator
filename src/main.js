@@ -365,8 +365,9 @@ document.querySelectorAll('[data-view]').forEach((b) => {
     scene.setPreset(b.dataset.view);
   });
 });
-$('panL').addEventListener('click', () => scene.panBy(-3));
-$('panR').addEventListener('click', () => scene.panBy(3));
+document.querySelectorAll('[data-orbit]').forEach((b) => {
+  b.addEventListener('click', () => scene.orbitBy(Number(b.dataset.orbit)));
+});
 $('zoomIn').addEventListener('click', () => scene.zoomBy(0.8));
 $('zoomOut').addEventListener('click', () => scene.zoomBy(1.25));
 

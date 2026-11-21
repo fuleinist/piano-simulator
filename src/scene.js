@@ -21,6 +21,13 @@ export const PRESETS = {
 // How far a following preset may slide from its anchor, in scene units.
 const FOLLOW_LIMIT = 22;
 
+// The vertical axis of the scene, for a pan.
+const UP = new THREE.Vector3(0, 1, 0);
+
+// The camera animation is over once it sits this close to the goal, in scene
+// units. From then on nothing may touch the camera.
+const ARRIVE = 0.02;
+
 // The paper takes the top of the window, so the stage sits below centre: the
 // whole view slides up the screen, which moves the piano down and leaves the
 // band clear of the keys. A share of the visible height, so it holds at any
@@ -54,21 +61,29 @@ export class Scene {
     this._environment();
     this._floor();
 
-    // Camera state. `_base` is the preset anchor, and `_followX` is the slide
-    // along the keys that keeps the hands in frame.
+    // Camera state. `_base` is the view the camera settles on: a preset
+    // anchor, or the view that the player moved it to. `_followX` is the
+    // slide along the keys that keeps the hands in frame.
     this._base = { pos: new THREE.Vector3(), target: new THREE.Vector3(), follow: false };
     this._followX = 0;
     this._focusX = null;
 
+    // True while the camera travels to a new anchor.
+    this._settling = false;
+
     // Recording frame: null while the stage fills the window.
     this._frameName = null;
 
-    // A user drag takes over from the preset, so the camera must not snap back.
+    // A gesture owns the camera while it runs, so a preset animation must not
+    // pull the view back under the pointer. A gesture also cancels a follow
+    // and any travel that is still in flight. When the gesture ends, the idle
+    // frame takes the view it reached as the anchor (see update), so a drag,
+    // a wheel zoom, or a pan stays where the player put it.
     this._dragging = false;
     this.controls.addEventListener('start', () => {
       this._dragging = true;
       this._base.follow = false;
-      this._syncBaseFromCamera();
+      this._settling = false;
       this._followX = 0;
     });
     this.controls.addEventListener('end', () => { this._dragging = false; });
@@ -125,8 +140,17 @@ export class Scene {
     this._base.follow = Boolean(p.follow);
     this._followX = 0;
     if (instant) {
-      this.camera.position.copy(this._base.pos);
-      this.controls.target.copy(this._base.target);
+      // The anchor carries no lift, so the camera takes the lift here. The
+      // idle frame reads the anchor back off the camera, so the two must
+      // start in step.
+      const lift = this._lift(this._base.pos, this._base.target);
+      this.camera.position.copy(this._base.pos).add(lift);
+      this.controls.target.copy(this._base.target).add(lift);
+      this._settling = false;
+    } else {
+      // A preset replaces every gesture: the pan, the zoom, and the tilt all
+      // come back to the anchor. The travel starts on the next frame.
+      this._settling = true;
     }
   }
 
@@ -157,8 +181,9 @@ export class Scene {
 
   /**
    * Take the camera as it stands as the new anchor. The lift belongs to the
-   * view, not to the anchor, so it comes off first: a drag would otherwise
-   * stack another lift on each frame.
+   * view and not to the anchor, so it comes off first. An idle frame calls
+   * this on every frame, so the anchor can never drift from the picture on
+   * screen and a preset change always starts from that picture.
    */
   _syncBaseFromCamera() {
     const pos = new THREE.Vector3().copy(this.camera.position);
@@ -168,22 +193,48 @@ export class Scene {
     this._base.target.copy(target).sub(lift);
   }
 
-  panBy(dx) {
+  /**
+   * Take the view on screen as the anchor. A follow slide and the run of the
+   * keys belong to the view, so they fold into the anchor first: the next step
+   * starts from the picture the player sees.
+   */
+  _takeView() {
+    if (this._followX) {
+      this._base.pos.x += this._followX;
+      this._base.target.x += this._followX;
+      this._followX = 0;
+    }
     this._base.follow = false;
-    this.camera.position.x += dx;
-    this.controls.target.x += dx;
-    this._syncBaseFromCamera();
-    this._followX = 0;
+  }
+
+  /** Move the view along the keys, in scene units. */
+  panBy(dx) {
+    this._takeView();
+    this._base.pos.x += dx;
+    this._base.target.x += dx;
+    this._settling = true;
+  }
+
+  /**
+   * Spin the view around its target about the vertical axis, by `deg` degrees.
+   * The camera keeps its distance and its target, so only the angle changes.
+   * A positive angle swings the camera to its own left.
+   */
+  orbitBy(deg) {
+    this._takeView();
+    const offset = new THREE.Vector3().subVectors(this._base.pos, this._base.target);
+    offset.applyAxisAngle(UP, THREE.MathUtils.degToRad(deg));
+    this._base.pos.copy(this._base.target).add(offset);
+    this._settling = true;
   }
 
   zoomBy(factor) {
-    const dir = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
+    this._takeView();
+    const dir = new THREE.Vector3().subVectors(this._base.pos, this._base.target);
     const len = THREE.MathUtils.clamp(dir.length() * factor, this.controls.minDistance, this.controls.maxDistance);
     dir.setLength(len);
-    this.camera.position.copy(this.controls.target).add(dir);
-    this._base.follow = false;
-    this._syncBaseFromCamera();
-    this._followX = 0;
+    this._base.pos.copy(this._base.target).add(dir);
+    this._settling = true;
   }
 
   /**
@@ -233,9 +284,19 @@ export class Scene {
       : 0;
     this._followX += (wantX - this._followX) * (1 - Math.pow(0.02, dt));
 
-    // Never fight a user drag with the preset lerp.
+    // A gesture owns the camera while it runs.
     if (this._dragging) {
       this.controls.update();
+      return;
+    }
+
+    // Only a preset change in flight or a follow moves the camera. An idle
+    // frame leaves a drag, a wheel zoom, or a step where it is, and keeps the
+    // anchor on the view that the player sees, so the next preset change
+    // starts from that view.
+    if (!this._settling && !follow) {
+      this.controls.update();
+      this._syncBaseFromCamera();
       return;
     }
 
@@ -255,22 +316,44 @@ export class Scene {
     const lift = this._lift(goalPos, goalTarget);
     goalPos.add(lift);
     goalTarget.add(lift);
-    this.camera.position.lerp(goalPos, k);
-    this.controls.target.lerp(goalTarget, k);
+
+    // Land on the goal exactly, then stop touching the camera. A lerp that
+    // keeps running would undo the next gesture.
+    const arrived = this._settling
+      && this.camera.position.distanceToSquared(goalPos) <= ARRIVE * ARRIVE
+      && this.controls.target.distanceToSquared(goalTarget) <= ARRIVE * ARRIVE;
+    if (arrived) {
+      this.camera.position.copy(goalPos);
+      this.controls.target.copy(goalTarget);
+      this._settling = false;
+    } else {
+      this.camera.position.lerp(goalPos, k);
+      this.controls.target.lerp(goalTarget, k);
+    }
     this.controls.update();
+  }
+
+  /** The screen axes of the view, for a step across the picture. */
+  _screenAxes(dir) {
+    const view = dir.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(view, new THREE.Vector3(0, 1, 0));
+    // A straight-down view gives no right vector, so pick the key axis.
+    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+    right.normalize();
+    const up = new THREE.Vector3().crossVectors(right, view).normalize();
+    return { right, up };
+  }
+
+  /** The height of the window at the focus distance, in scene units. */
+  _visibleHeight(distance) {
+    return 2 * distance * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
   }
 
   /** The world vector that moves the view up the screen by VIEW_LIFT. */
   _lift(pos, target) {
     const dir = new THREE.Vector3().subVectors(target, pos).normalize();
-    const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0));
-    // A straight-down view gives no right vector, so pick the key axis.
-    if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
-    right.normalize();
-    const screenUp = new THREE.Vector3().crossVectors(right, dir).normalize();
-    const visible = 2 * pos.distanceTo(target)
-      * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    return screenUp.multiplyScalar(visible * VIEW_LIFT);
+    const { up } = this._screenAxes(dir);
+    return up.multiplyScalar(this._visibleHeight(pos.distanceTo(target)) * VIEW_LIFT);
   }
 
   render() {
