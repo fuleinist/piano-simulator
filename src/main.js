@@ -16,6 +16,7 @@ import {
 } from './library.js';
 import { SearchPanel } from './searchui.js';
 import { internetArchive } from './sources/internetarchive.js';
+import { musicBox, upcomingSpan } from './framing.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage');
@@ -39,6 +40,29 @@ score.setVisible($('scoreToggle').checked);
 // sampler releases the final chord over about a second, so an instant stop
 // would cut the sound off.
 const RECORD_TAIL_S = 2;
+
+// How a recording holds its view. A note that needs more room pulls the camera
+// back three seconds before it lands, and the wider view is kept while any note
+// in the next ten seconds still needs it. Both windows are off by a few
+// seconds on purpose: a view that answers every chord makes a jittery video.
+const FIT_OUT_S = 3;
+const FIT_HOLD_S = 10;
+
+/**
+ * The two boxes a capture must hold in frame: the keys that arrive inside the
+ * three second lead, and the keys that arrive inside the ten second hold.
+ * Both start from the keys the piece holds down now. Null when nothing is
+ * pressed, so the fit lets the view back to the one the player chose.
+ */
+function fitBoxes() {
+  const held = [...player.active.keys()];
+  const near = upcomingSpan(player.notes, player.time, player.time + FIT_OUT_S);
+  const wide = upcomingSpan(player.notes, player.time, player.time + FIT_HOLD_S);
+  return {
+    box: musicBox(near ? [...held, ...near] : held),
+    hold: musicBox(wide ? [...held, ...wide] : held),
+  };
+}
 
 // --- Song library --------------------------------------------------------
 // Everything the picker lists is an entry with a stable id, so a built-in file
@@ -383,7 +407,7 @@ recorder.onState = (r) => {
   score.setRecording(r.recording);
   if (r.stopping) $('recHint').textContent = 'Finishing the last chord…';
   else if (r.recording) $('recHint').textContent = `Recording ${recorder.frame}. Press Stop to save now.`;
-  else $('recHint').textContent = 'Saves a WebM with audio. Stops when the piece ends.';
+  else $('recHint').textContent = 'Saves a WebM with audio. Stops when the piece ends. The camera pulls back to keep the hands in frame.';
 };
 $('recordBtn').addEventListener('click', () => { preview.clear(); recorder.toggle(); });
 
@@ -479,6 +503,9 @@ function frame() {
   player.update(dt);
   // Following presets need this frame's hand position before the camera moves.
   scene.setFocus(hands.centerX());
+  // A capture holds the pressed keys in its frame, whatever shape it takes.
+  const fit = recorder.recording ? fitBoxes() : { box: null, hold: null };
+  scene.setFitBox(fit.box, fit.hold);
   scene.update(dt);
   piano.update(dt);
   score.update(player.time);

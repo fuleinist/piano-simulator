@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { BOARD_W } from './layout.js';
 import { FRAMES, frameSize, fitBox } from './frames.js';
+import { VIEW_LIFT, fitScale, nextFit } from './framing.js';
 
 // Camera presets. "top" is the default: a true 90° overhead view, with the
 // camera directly above its target, so the keys read at their real width and
@@ -31,8 +32,15 @@ const ARRIVE = 0.02;
 // The paper takes the top of the window, so the stage sits below centre: the
 // whole view slides up the screen, which moves the piano down and leaves the
 // band clear of the keys. A share of the visible height, so it holds at any
-// window shape.
-const VIEW_LIFT = 0.11;
+// window shape. src/framing.js carries the share, because the recording fit
+// measures the same slide and both must read one number.
+
+// The depth range the fog fades over, tuned for the default view. A recording
+// fit, or a manual zoom-out, pulls the camera back, and a fixed range would
+// walk the piano into the haze, so the range rides the pull-back (update).
+const FOG_NEAR = 70;
+const FOG_FAR = 160;
+const FOG_REFERENCE = 46; // the top preset's distance, where the fog is tuned
 
 export class Scene {
   constructor(canvas) {
@@ -46,14 +54,16 @@ export class Scene {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07090f);
-    this.scene.fog = new THREE.Fog(0x07090f, 70, 160);
+    this.scene.fog = new THREE.Fog(0x07090f, FOG_NEAR, FOG_FAR);
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
     this.controls.minDistance = 7;
-    this.controls.maxDistance = 110;
+    // A recording fit is a lower bound on the distance, and a narrow frame can
+    // ask for the whole keyboard: the cap must leave room for that.
+    this.controls.maxDistance = 150;
     this.controls.maxPolarAngle = 1.48;
     this.controls.screenSpacePanning = false;
 
@@ -74,6 +84,16 @@ export class Scene {
     // Recording frame: null while the stage fills the window.
     this._frameName = null;
 
+    // Recording fit: the boxes of pressed keys a capture must hold in frame,
+    // and the pull-back the camera applies to hold them. `_fitWant` is the
+    // committed value, which moves only when a need earns it; `_fit` eases
+    // towards it, and both are 1 outside a recording.
+    this._fitBox = null;
+    this._fitHold = null;
+    this._fitWant = 1;
+    this._fitState = { fit: 1, narrowFor: 0 };
+    this._fit = 1;
+
     // A gesture owns the camera while it runs, so a preset animation must not
     // pull the view back under the pointer. A gesture also cancels a follow
     // and any travel that is still in flight. When the gesture ends, the idle
@@ -86,7 +106,16 @@ export class Scene {
       this._settling = false;
       this._followX = 0;
     });
-    this.controls.addEventListener('end', () => { this._dragging = false; });
+    this.controls.addEventListener('end', () => {
+      this._dragging = false;
+      // A recording fit keeps the camera off the idle path, so the anchor must
+      // take the view the gesture reached here instead. The fit restarts from
+      // that view: the player's choice is the floor, so a zoom-out survives.
+      this._syncBaseFromCamera();
+      this._fit = 1;
+      this._fitWant = 1;
+      this._fitState = { fit: 1, narrowFor: 0 };
+    });
 
     this.setPreset('top', true);
     this.resize();
@@ -177,6 +206,41 @@ export class Scene {
   // Centre of the playing hands, in scene units. Following presets slide to it.
   setFocus(x) {
     this._focusX = Number.isFinite(x) ? x : null;
+  }
+
+  /**
+   * Set the keys a recording must keep in frame, or clear both boxes with null.
+   *
+   * `box` is what the frame must hold right now: a note inside it pulls the
+   * camera back at once. `hold` is what the near future will need, and it
+   * decides when the camera may come back in.
+   *
+   * While a box is set the camera pulls back along its own view direction far
+   * enough that every corner projects inside the frame, and returns to the
+   * view the player chose once the boxes no longer need it. It never zooms in
+   * past that view, so a fit cannot throw away a shot the player set up.
+   */
+  setFitBox(box, hold = box) {
+    this._fitBox = box || null;
+    this._fitHold = hold || this._fitBox;
+  }
+
+  /** The pull-back one box needs from the anchor, 1 when it already fits. */
+  _fitNeed(box) {
+    if (!box) return 1;
+    const to = this._base.target;
+    const offset = new THREE.Vector3().subVectors(this._base.pos, to);
+    const distance = offset.length();
+    if (!distance) return 1;
+    return fitScale(box, {
+      // A follow slide moves what the frame holds, so the box is measured from
+      // the target the goal view uses.
+      target: [to.x + this._followX, to.y, to.z],
+      dir: [offset.x / distance, offset.y / distance, offset.z / distance],
+      distance,
+      fov: this.camera.fov,
+      aspect: this.camera.aspect,
+    });
   }
 
   /**
@@ -284,17 +348,41 @@ export class Scene {
       : 0;
     this._followX += (wantX - this._followX) * (1 - Math.pow(0.02, dt));
 
+    // Pull the camera back until the recording frame holds every pressed key.
+    //
+    // The committed pull-back moves only when a need earns it: a note in the
+    // near window widens the view at once, and the view comes back in only
+    // when the hold window has needed less for a moment. A steady passage
+    // therefore keeps a steady frame, and the two transitions are eased on
+    // their own clocks rather than chased frame by frame.
+    const out = this._fitNeed(this._fitBox);
+    const hold = this._fitNeed(this._fitHold);
+    this._fitState = nextFit(this._fitState, out, hold, dt);
+    this._fitWant = this._fitState.fit;
+    const rate = this._fitWant > this._fit ? 0.02 : 0.15; // out over ~0.7 s, in over ~1.5 s
+    this._fit += (this._fitWant - this._fit) * (1 - Math.pow(rate, dt));
+    if (this._fitWant === 1 && Math.abs(this._fit - 1) < 1e-3) this._fit = 1;
+    const fitting = this._fit > 1.0005 || this._fitWant > 1.0005;
+
+    // A pull-back lengthens every sight line, so the fog would otherwise fade
+    // the piano the moment the frame needs it small. The range rides the
+    // camera's own distance from the keys, and is untouched at the default
+    // view distance.
+    const pull = Math.max(1, this.camera.position.distanceTo(this.controls.target) / FOG_REFERENCE);
+    this.scene.fog.near = FOG_NEAR * pull;
+    this.scene.fog.far = FOG_FAR * pull;
+
     // A gesture owns the camera while it runs.
     if (this._dragging) {
       this.controls.update();
       return;
     }
 
-    // Only a preset change in flight or a follow moves the camera. An idle
-    // frame leaves a drag, a wheel zoom, or a step where it is, and keeps the
-    // anchor on the view that the player sees, so the next preset change
-    // starts from that view.
-    if (!this._settling && !follow) {
+    // Only a preset change in flight, a follow, or a recording fit moves the
+    // camera. An idle frame leaves a drag, a wheel zoom, or a step where it
+    // is, and keeps the anchor on the view that the player sees, so the next
+    // preset change starts from that view.
+    if (!this._settling && !follow && !fitting) {
       this.controls.update();
       this._syncBaseFromCamera();
       return;
@@ -311,6 +399,9 @@ export class Scene {
       this._base.target.y,
       this._base.target.z,
     );
+    // A fit scales the whole view about its target, so the angle and the
+    // screen direction stay put and only the distance changes.
+    goalPos.sub(goalTarget).multiplyScalar(this._fit).add(goalTarget);
     // Slide the whole view up the screen axis. The camera and its target move
     // together, so the angle never changes: only what sits in the frame.
     const lift = this._lift(goalPos, goalTarget);
