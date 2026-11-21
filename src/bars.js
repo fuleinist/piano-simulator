@@ -15,6 +15,11 @@ const RUNWAY = PPS * LOOKAHEAD;
 // Bars vanish just behind the keyboard, before they reach the keys.
 const BAR_END_Z = KEY_BACK_Z - 0.4;
 const FADE_LEN = 1.2; // dim over the last bit of bar length as it drains
+// A note shorter than this still draws a sliver. The floor is the only place
+// where a bar may stand in for more music than its note holds.
+export const MIN_LEN = 0.12;
+// Two onsets closer than this are one strike, not two neighbours.
+const SAME_ONSET = 1e-4;
 
 // The pedal lane runs beside the keys, outside the left end of the keyboard
 // and clear of the case, so no part of the rail hides inside the cheek. Each
@@ -40,6 +45,40 @@ function importance(n, velMin, velMax) {
   const velNorm = velMax > velMin ? (n.velocity - velMin) / (velMax - velMin) : 0.6;
   const melodyBoost = n.melody ? 1 : 0.28;
   return THREE.MathUtils.clamp(0.55 * velNorm + 0.45 * melodyBoost, 0, 1);
+}
+
+// Drawn length of each bar, in world units. A bar is as long as the music its
+// note holds, and it stops at the next onset on the same key. Two notes on one
+// key draw bars in one column, so a bar that outran its own note would paint
+// over the bar behind it. A file that overlaps two notes on one key (a key
+// struck again, or one pitch carried by two tracks) hits this every bar.
+export function barLengths(notes, pps = PPS) {
+  const onsets = new Map();
+  for (const n of notes) {
+    if (!onsets.has(n.midi)) onsets.set(n.midi, []);
+    onsets.get(n.midi).push(n.time);
+  }
+  for (const times of onsets.values()) times.sort((a, b) => a - b);
+  return notes.map((n) => {
+    const len = Math.max(n.duration * pps, MIN_LEN);
+    const times = onsets.get(n.midi);
+    const next = firstOnsetAfter(times, n.time);
+    if (next >= times.length) return len;
+    return Math.min(len, (times[next] - n.time) * pps);
+  });
+}
+
+// Index of the first onset later than this one. Onsets that share the strike
+// window belong to the same chord, so neither cuts the other.
+function firstOnsetAfter(times, time) {
+  let lo = 0;
+  let hi = times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= time + SAME_ONSET) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 export class Bars {
@@ -76,10 +115,11 @@ export class Bars {
    */
   load(notes, pedals = {}) {
     if (this.mesh) { this.group.remove(this.mesh); this.mesh.dispose(); }
-    this.data = notes.map((n) => {
+    const lens = barLengths(notes);
+    this.data = notes.map((n, i) => {
       return {
         x: keyX(n.midi),
-        len: Math.max(n.duration * PPS, 0.45),
+        len: lens[i],
         width: keyWidth(n.midi) * 0.92,
         imp: 0,
         color: (n.hand === 'L' ? (n.melody ? COLORS.Lm : COLORS.L) : (n.melody ? COLORS.Rm : COLORS.R)),

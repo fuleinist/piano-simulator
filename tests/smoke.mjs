@@ -7,6 +7,7 @@ const { Midi } = MidiPkg;
 import { assignFingering, markMelody, CHORD_WINDOW } from '../src/fingering.js';
 import { keyX, isBlack, noteName, midiFromName, MIDI_MIN, MIDI_MAX, WHITE_COUNT } from '../src/layout.js';
 import { PRESETS } from '../src/scene.js';
+import { barLengths, PPS, MIN_LEN } from '../src/bars.js';
 import { collectPedals, pedalSpans, PEDAL_ORDER } from '../src/pedals.js';
 import { MAX_GAP, MIN_GAP, barTimes, layoutScore } from '../src/score.js';
 
@@ -76,6 +77,36 @@ for (const f of files) {
   if (badFinger) fail(`${f}: ${badFinger} invalid fingers`);
   if (badWrist) fail(`${f}: ${badWrist} non-finite wristX`);
   if (bigSpan) fail(`${f}: ${bigSpan} chords span > 19 semitones`);
+
+  // Bar check. A bar holds the music of its own note, and it stops at the next
+  // note on the same key. Two notes on one key draw bars in one column, so a
+  // bar that outran its note paints over the bar behind it.
+  const barLens = barLengths(assigned);
+  let badBars = 0;
+  let clipped = 0;
+  let longestBar = 0;
+  const byPitch = new Map();
+  for (let i = 0; i < assigned.length; i++) {
+    const n = assigned[i];
+    const len = barLens[i];
+    if (!(len > 0)) badBars++;
+    // Never longer than the note holds, unless the note sits under the floor.
+    if (len > Math.max(n.duration * PPS, MIN_LEN) + 1e-9) badBars++;
+    if (len < n.duration * PPS - 1e-9) clipped++;
+    longestBar = Math.max(longestBar, len);
+    if (!byPitch.has(n.midi)) byPitch.set(n.midi, []);
+    byPitch.get(n.midi).push({ time: n.time, len });
+  }
+  let overBar = 0;
+  for (const list of byPitch.values()) {
+    list.sort((a, b) => a.time - b.time);
+    for (let i = 0; i + 1 < list.length; i++) {
+      // The far edge of this bar must stay behind the next bar's near edge.
+      if (list[i].len > (list[i + 1].time - list[i].time) * PPS + 1e-9) overBar++;
+    }
+  }
+  if (badBars) fail(`${f}: ${badBars} bars longer than their note`);
+  if (overBar) fail(`${f}: ${overBar} bars overlap the next note on their key`);
 
   // Pedal check. A piece may carry no pedal events at all, and that is not a
   // fault: the lane simply stays empty. A span that the lane draws must start
@@ -160,9 +191,10 @@ for (const f of files) {
     `L=${String(lh).padStart(4)} R=${String(rh).padStart(4)} ` +
     `melody=${String(melody).padStart(4)} dur=${midi.duration.toFixed(1)}s ` +
     `pedals=${used.join(' ') || 'none'} ` +
+    `bars=${clipped}clipped/${longestBar.toFixed(1)}u ` +
     `sheet=${layout.glyphs.length}g/${bars.length}b gap=${layout.gap.toFixed(2)} ` +
     `beam=${beams} rest=${rests} dot=${dotted}` +
-    (badFinger || badWrist || bigSpan || badPedal || badSheet ? '  [FAIL]' : '  OK')
+    (badFinger || badWrist || bigSpan || badBars || overBar || badPedal || badSheet ? '  [FAIL]' : '  OK')
   );
 }
 
