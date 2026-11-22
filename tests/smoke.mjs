@@ -11,7 +11,7 @@ import { barLengths, PPS, MIN_LEN } from '../src/bars.js';
 import { collectPedals, pedalSpans, PEDAL_ORDER } from '../src/pedals.js';
 import { NoteSchedule } from '../src/schedule.js';
 import {
-  MAX_GAP, MIN_GAP, barTimes, keyAt, keyMarkSteps, keyScalePcs, keySegments, layoutScore,
+  MARK_INK_STEPS, MAX_GAP, MIN_GAP, barTimes, keyAt, keyMarkSteps, keyScalePcs, keySegments, layoutScore,
 } from '../src/score.js';
 
 const dir = path.resolve('public/midi');
@@ -234,7 +234,9 @@ for (const f of files) {
       const topStep = staff === 'bass' ? layout.staves.bassTop : layout.staves.trebleTop;
       for (const mark of marks) {
         const y = top + (topStep - mark.step) * (layout.gap / 2);
-        if (!(y >= 0 && y <= layout.height)) badKey++;
+        const ink = MARK_INK_STEPS * (layout.gap / 2);
+        // The paper must hold the whole mark, not only the step it sits on.
+        if (!(y - ink >= -1e-6 && y + ink <= layout.height + 1e-6)) badKey++;
       }
       markSpan[staff] = Math.max(markSpan[staff], marks.length);
     }

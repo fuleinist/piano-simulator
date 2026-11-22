@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  BASS, BEAM_SLOPE, MAX_GAP, MIN_GAP, MIN_STEM, PAD, TREBLE, barTimes, guessAccidentals,
-  keyAccidentalsOf, keyAt, keyMarkSteps, keySegments, layoutScore, ledgerStepsOf,
+  BASS, BEAM_SLOPE, MARK_INK_STEPS, MAX_GAP, MIN_GAP, MIN_STEM, PAD, TREBLE, barTimes,
+  guessAccidentals, keyAccidentalsOf, keyAt, keyMarkSteps, keySegments, layoutScore, ledgerStepsOf,
   noteValueOf, pitchOf, signatureAt, staffOf, ticksToSeconds,
 } from '../src/score.js';
 
@@ -568,7 +568,8 @@ test('the view draws the key signature and follows a key change', () => {
 test('the marks pack tight, and a note stops at the left margin', () => {
   // A printed signature sets its marks about two fifths of a line gap apart,
   // not the full gap that the first version used.
-  assert.match(view, /const KEY_GAP = 0\.42/, 'the mark pitch left the printed range');
+  assert.match(view, /const KEY_GAP = 0\.78/, 'the mark pitch left the printed range');
+  assert.match(view, /const KEY_SIZE = 2\.5/, 'the mark is not twice the size it was');
   assert.match(view, /this\.keyGap = gap \* KEY_GAP/, 'the key signature is spaced too wide');
   assert.match(view, /KEY_SQUEEZE/, 'a mark needs a squeeze to fit that pitch');
   // The note layer carries a clip that starts on the system line in the gutter,
@@ -621,11 +622,14 @@ test('every mark the paper draws stays on the paper', () => {
       keySignatures: [{ ticks: 0, key, scale: 'major' }],
     });
     assert.equal(Math.abs(wide.keys[0].accidentals), 7, `${key} must print seven marks`);
+    // The paper must hold the whole mark, not only the step it sits on.
+    const ink = MARK_INK_STEPS * (wide.gap / 2);
     for (const staff of [TREBLE, BASS]) {
       for (const mark of keyMarkSteps(wide.keys[0].accidentals, staff)) {
         const y = (staff === BASS ? wide.staves.bassTopY : wide.staves.trebleTopY)
           + ((staff === BASS ? wide.staves.bassTop : wide.staves.trebleTop) - mark.step) * (wide.gap / 2);
         assert.ok(y >= 0 && y <= wide.height, `a ${key} mark left the paper`);
+        assert.ok(y - ink >= 0 && y + ink <= wide.height, `a ${key} mark is cut by the paper edge`);
       }
     }
   }

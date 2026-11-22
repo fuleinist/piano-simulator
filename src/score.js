@@ -76,6 +76,10 @@ const FLAT_STEPS = {
 // Each printed mark must buy this much more of the piece inside the key, or a
 // signature with no marks is the better answer.
 const MARK_COST = 0.005;
+// Half the height of a printed mark, in steps. The paper reserves this much
+// room beside every mark, so a tall sign never runs off the edge. The view's
+// mark size must stay inside it.
+export const MARK_INK_STEPS = 4;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
@@ -415,12 +419,13 @@ export function layoutScore(notes, {
     if (midiMin === null || note.midi < midiMin) midiMin = note.midi;
     if (midiMax === null || note.midi > midiMax) midiMax = note.midi;
   }
-  // A sign outside the staff still needs its room on the paper.
+  // A sign outside the staff still needs its room on the paper, and so does the
+  // ink of the sign itself.
   for (const segment of keys) {
     for (const staff of [TREBLE, BASS]) {
       for (const mark of keyMarkSteps(segment.accidentals, staff)) {
-        if (mark.step < minStep) minStep = mark.step;
-        if (mark.step > maxStep) maxStep = mark.step;
+        if (mark.step - MARK_INK_STEPS < minStep) minStep = mark.step - MARK_INK_STEPS;
+        if (mark.step + MARK_INK_STEPS > maxStep) maxStep = mark.step + MARK_INK_STEPS;
       }
     }
   }

@@ -24,8 +24,8 @@ const FLAG_LEN = 1.5; // flag length, in line gaps
 const SIG_FONT = '"Segoe UI Symbol", "Noto Music", serif';
 // A printed key signature packs its marks far tighter than a line gap, and each
 // mark is tall and narrow. The view squeezes the glyph to reach that shape.
-const KEY_GAP = 0.42; // mark pitch, in line gaps
-const KEY_SIZE = 1.25; // mark font size, in line gaps
+const KEY_GAP = 0.78; // mark pitch: twice the old mark, and the same air between two
+const KEY_SIZE = 2.5; // mark font size, in line gaps
 const KEY_SQUEEZE = 0.62; // how much the glyph narrows across
 const BRACKET = 5; // the system line, in px from the right edge of the gutter
 // A sign from the layout reads as its music glyph: a sharp, a flat, a natural.
