@@ -565,6 +565,20 @@ test('the view draws the key signature and follows a key change', () => {
   assert.match(main, /meta: p\.scoreMeta/, 'the view never receives the key signature');
 });
 
+test('the marks pack tight, and a note stops at the marker', () => {
+  // A printed signature sets its marks about two fifths of a line gap apart,
+  // not the full gap that the first version used.
+  assert.match(view, /const KEY_GAP = 0\.42/, 'the mark pitch left the printed range');
+  assert.match(view, /this\.keyGap = gap \* KEY_GAP/, 'the key signature is spaced too wide');
+  assert.match(view, /KEY_SQUEEZE/, 'a mark needs a squeeze to fit that pitch');
+  // The note layer carries a clip that starts on the playhead, inside a group
+  // with no transform of its own.
+  assert.match(view, /clipPath/, 'the paper has no clip at the marker');
+  assert.match(view, /'clip-path': 'url\(#sc-clip\)'/, 'the note layer is not clipped at the marker');
+  assert.match(view, /playheadRatio \* layout\.width/, 'the clip must start on the playhead');
+  assert.match(view, /this\.clip\.appendChild\(this\.world\)/, 'the note layer must sit inside the clip group');
+});
+
 test('every mark the paper draws stays on the paper', () => {
   const sheet = sheetOf([
     note(21, 0, 1), note(108, 0, 1), note(60, 1, 1, 'L'), note(72, 2, 0.5),

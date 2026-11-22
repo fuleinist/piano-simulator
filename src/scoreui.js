@@ -22,6 +22,11 @@ const CLEF_FONT = '"Bravura", "Segoe UI Symbol", "Noto Music", serif';
 const ACC_FONT = '"Segoe UI Symbol", serif';
 const FLAG_LEN = 1.5; // flag length, in line gaps
 const SIG_FONT = '"Segoe UI Symbol", "Noto Music", serif';
+// A printed key signature packs its marks far tighter than a line gap, and each
+// mark is tall and narrow. The view squeezes the glyph to reach that shape.
+const KEY_GAP = 0.42; // mark pitch, in line gaps
+const KEY_SIZE = 1.25; // mark font size, in line gaps
+const KEY_SQUEEZE = 0.62; // how much the glyph narrows across
 // A sign from the layout reads as its music glyph: a sharp, a flat, a natural.
 const ACC_GLYPH = { '#': '\u266F', b: '\u266D', n: '\u266E' };
 const signGlyph = (sign) => ACC_GLYPH[sign] || sign;
@@ -165,6 +170,7 @@ export class ScoreView {
     this.buckets.clear();
     this.svg.replaceChildren();
     this.world = null;
+    this.clip = null;
     this.gutter = null;
     this.needle = null;
     this.staves = null;
@@ -214,11 +220,23 @@ export class ScoreView {
       SVG('stop', { offset: '1', 'stop-color': '#fcfcfa', 'stop-opacity': 0 }),
     );
     defs.appendChild(fade);
+    // A note stops at the marker. The clip starts on the playhead, so no note
+    // scrolls under the clef, the key signature or the time signature.
+    const marker = Math.round(layout.playheadRatio * layout.width);
+    const clip = SVG('clipPath', { id: 'sc-clip' });
+    clip.appendChild(SVG('rect', {
+      x: marker, y: 0, width: Math.max(0, width - marker), height,
+    }));
+    defs.appendChild(clip);
     this.svg.appendChild(defs);
 
     this._drawStaves();
     this.world = SVG('g', { class: 'sc-world' });
-    this.svg.append(this.world);
+    // The clip belongs to a group with no transform of its own, so the clip
+    // rectangle stays on the paper while the note layer moves under it.
+    this.clip = SVG('g', { class: 'sc-window', 'clip-path': 'url(#sc-clip)' });
+    this.clip.appendChild(this.world);
+    this.svg.appendChild(this.clip);
     this._drawGutter();
     this._drawNeedle();
 
@@ -233,7 +251,9 @@ export class ScoreView {
     // Room for a clef, the key signature and a time signature, so none of them
     // covers a scrolling note. The widest signature of the piece sets the room.
     const signs = Math.max(0, ...layout.keys.map((key) => Math.abs(key.accidentals)));
-    this.keyGap = gap * 1.05;
+    // A printed signature packs its marks at about two fifths of a line gap, so
+    // the group reads as one narrow column.
+    this.keyGap = gap * KEY_GAP;
     this.clefX = gap * 2.5;
     this.keyX = gap * 5.2;
     this.sigX = this.keyX + signs * this.keyGap + gap * 0.9;
@@ -314,17 +334,20 @@ export class ScoreView {
     const key = time === null ? keys[0] : keyAt(keys, time);
     if (!key || this.keyKey === key.accidentals) return;
     this.keyKey = key.accidentals;
-    // A mark reads a little larger than an accidental beside a notehead, as the
-    // engraver sets it.
-    const size = this.layout.gap * 1.9;
+    // A mark keeps the height of a note accidental and narrows across, so five
+    // of them fit in fewer than two line gaps.
+    const size = this.layout.gap * KEY_SIZE;
     for (const { staff, group } of this.keyNodes) {
       group.replaceChildren(...keyMarkSteps(key.accidentals, staff).map((mark, index) => {
         const sign = signGlyph(mark.sign);
+        const x = this.keyX + index * this.keyGap;
         const node = SVG('text', {
           class: 'sc-key-mark',
-          x: this.keyX + index * this.keyGap,
+          x: 0,
           'text-anchor': 'middle',
           'font-size': size,
+          // The squeeze sits on the glyph, so its centre stays on `x`.
+          transform: `translate(${x} 0) scale(${KEY_SQUEEZE} 1)`,
           y: centredBaseline(sign, size, ACC_FONT, this._yOf(mark.step, staff), this.svg),
         });
         node.textContent = sign;

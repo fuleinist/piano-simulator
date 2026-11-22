@@ -44,6 +44,8 @@ The key signature sits between the clef and the time signature, and it follows a
 
 The key-signature event of the MIDI file sets the marks. Six of the 18 built-in pieces carry no such event. For those pieces the band prints the signature that covers most of the sounding notes, and it charges one mark for each added sign. A piece in C major therefore keeps an empty signature.
 
+The notes stop at the amber marker. No note scrolls under the clef, the key signature or the time signature, so the marks keep a clear column at the edge of the paper.
+
 Every mark takes its place from the staff. A notehead sits on its line or space. A stem starts on the head it belongs to and ends on a fixed length, or on the beam. A beam runs from the first stem to the last, and the stems of the group take one direction from the average pitch. A whole rest hangs from the fourth line and a half rest sits on the middle line. The digits of the time signature fill the two spaces beside the middle line, and a clef centres on the middle line of its own staff.
 
 Bar lines come from the time signature and the tempo map of the file, so the bars follow a tempo change. The line spacing shrinks when the register is wide, so no note leaves the paper. The scroll speed follows the note density, so a fast passage keeps its notes apart. The band takes about a third of the window, and the stage sits below it.
