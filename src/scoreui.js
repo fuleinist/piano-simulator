@@ -27,6 +27,7 @@ const SIG_FONT = '"Segoe UI Symbol", "Noto Music", serif';
 const KEY_GAP = 0.42; // mark pitch, in line gaps
 const KEY_SIZE = 1.25; // mark font size, in line gaps
 const KEY_SQUEEZE = 0.62; // how much the glyph narrows across
+const BRACKET = 5; // the system line, in px from the right edge of the gutter
 // A sign from the layout reads as its music glyph: a sharp, a flat, a natural.
 const ACC_GLYPH = { '#': '\u266F', b: '\u266D', n: '\u266E' };
 const signGlyph = (sign) => ACC_GLYPH[sign] || sign;
@@ -214,20 +215,21 @@ export class ScoreView {
     for (const mark of layout.marks) bucketOf(this.marks, mark.time).push(mark);
 
     const defs = SVG('defs');
+    // A note stops at the left margin of the system. The clip starts on the
+    // system line inside the gutter, so no note scrolls under the clef, the key
+    // signature or the time signature.
+    this._layoutGutter();
+    const clip = SVG('clipPath', { id: 'sc-clip' });
+    clip.appendChild(SVG('rect', {
+      x: this.marginX, y: 0, width: Math.max(0, width - this.marginX), height,
+    }));
+    defs.appendChild(clip);
     const fade = SVG('linearGradient', { id: 'sc-gutter', x1: 0, y1: 0, x2: 1, y2: 0 });
     fade.append(
       SVG('stop', { offset: '0.55', 'stop-color': '#fcfcfa', 'stop-opacity': 0.4 }),
       SVG('stop', { offset: '1', 'stop-color': '#fcfcfa', 'stop-opacity': 0 }),
     );
     defs.appendChild(fade);
-    // A note stops at the marker. The clip starts on the playhead, so no note
-    // scrolls under the clef, the key signature or the time signature.
-    const marker = Math.round(layout.playheadRatio * layout.width);
-    const clip = SVG('clipPath', { id: 'sc-clip' });
-    clip.appendChild(SVG('rect', {
-      x: marker, y: 0, width: Math.max(0, width - marker), height,
-    }));
-    defs.appendChild(clip);
     this.svg.appendChild(defs);
 
     this._drawStaves();
@@ -244,21 +246,32 @@ export class ScoreView {
     if (this.visible && !this.recording) this.update(this.time);
   }
 
-  /** The clefs, the key signature, the time signature, the bracket, and the paper that fades the notes. */
-  _drawGutter() {
-    const layout = this.layout;
-    const { gap, height } = layout;
+  /**
+   * The gutter geometry: the room for the clef, the marks and the digits, and
+   * the system line that closes the left margin of the staff.
+   */
+  _layoutGutter() {
+    const { gap } = this.layout;
     // Room for a clef, the key signature and a time signature, so none of them
     // covers a scrolling note. The widest signature of the piece sets the room.
-    const signs = Math.max(0, ...layout.keys.map((key) => Math.abs(key.accidentals)));
+    const signs = Math.max(0, ...this.layout.keys.map((key) => Math.abs(key.accidentals)));
     // A printed signature packs its marks at about two fifths of a line gap, so
     // the group reads as one narrow column.
     this.keyGap = gap * KEY_GAP;
     this.clefX = gap * 2.5;
     this.keyX = gap * 5.2;
     this.sigX = this.keyX + signs * this.keyGap + gap * 0.9;
-    const width = Math.min(180, Math.max(70, this.sigX + gap * 1.6));
-    this.gutterWidth = width;
+    this.gutterWidth = Math.min(180, Math.max(70, this.sigX + gap * 1.6));
+    // The system line sits just inside the right edge of the gutter, and the
+    // notes stop there.
+    this.marginX = Math.round(this.gutterWidth - BRACKET);
+  }
+
+  /** The clefs, the key signature, the time signature, the bracket, and the paper that fades the notes. */
+  _drawGutter() {
+    const layout = this.layout;
+    const { gap, height } = layout;
+    const width = this.gutterWidth;
 
     this.gutter = SVG('g', { class: 'sc-gutter' });
     this.gutter.appendChild(
@@ -315,7 +328,7 @@ export class ScoreView {
     const bottom = staves.bassBottomY;
     this.gutter.appendChild(SVG('path', {
       class: 'sc-bracket',
-      d: `M ${width - 5} ${top} h -4 v ${bottom - top} h 4`,
+      d: `M ${width - BRACKET} ${top} h -4 v ${bottom - top} h 4`,
     }));
     this.svg.appendChild(this.gutter);
   }
