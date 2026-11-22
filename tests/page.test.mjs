@@ -182,6 +182,38 @@ test('a recording frame holds the keys the hands press', () => {
     'main.js restores a hint that does not mention the fit');
 });
 
+test('a hidden tab keeps the music, and only a control stops it', () => {
+  const player = read('src/player.js');
+  const main = read('src/main.js');
+  const clock = read('src/clock.js');
+  const schedule = read('src/schedule.js');
+
+  // The time comes from the audio clock, so a frame that arrives late, or not
+  // at all, cannot slow the piece down.
+  assert.match(player, /Tone\.getContext\(\)\.currentTime/, 'the player does not read the audio clock');
+  assert.doesNotMatch(player, /this\.time \+= dt/, 'the player still adds up frame time');
+  assert.match(clock, /clockFor\(/, 'the clock cannot place a music time on the audio clock');
+
+  // The notes are placed on the audio clock before they sound, so a stalled
+  // frame loop cannot silence the piece.
+  assert.match(player, /export const LOOKAHEAD_S/, 'the player has no look-ahead');
+  assert.match(schedule, /pump\(until, sink\)/, 'the schedule cannot be pumped');
+  assert.match(main, /setInterval\(\(\) => player\.pump\(\)/,
+    'main.js pumps the audio from the frame loop only');
+
+  // A hidden tab allows a timer one tick a second, so a shorter look-ahead
+  // would leave a gap between the notes.
+  const lookahead = Number((player.match(/LOOKAHEAD_S = ([\d.]+)/) || [])[1]);
+  assert.ok(lookahead >= 1, `a look-ahead of ${lookahead}s is shorter than the gap a hidden tab allows`);
+
+  // Nothing stops or slows the piece on a tab change: the transport controls
+  // are the only way.
+  for (const [name, source] of [['main.js', main], ['player.js', player]]) {
+    assert.doesNotMatch(source, /visibilitychange/, `${name} stops the music when the tab changes`);
+  }
+  assert.doesNotMatch(player, /document\.hidden/, 'the player reads the visibility of the page');
+});
+
 test('every test file runs under npm test', () => {
   const dir = new URL('../tests/', import.meta.url);
   const suites = fs.readdirSync(dir).filter((f) => f.endsWith('.test.mjs'));

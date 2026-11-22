@@ -26,6 +26,9 @@ const piano = new Piano(scene.scene);
 const bars = new Bars(scene.scene);
 const hands = new Hands(scene.scene);
 const player = new Player(piano, bars, hands);
+// A phone that locks its screen keeps the music. Safari suspends the audio
+// context unless the page declares playback, and other browsers ignore this.
+if (navigator.audioSession) navigator.audioSession.type = 'playback';
 const recorder = new Recorder(canvas, scene);
 const preview = new FramePreview(scene, $('framePreview'));
 const score = new ScoreView({ root: $('score'), svg: $('scoreSvg') });
@@ -498,6 +501,12 @@ sizePaper();
 
 // --- Main loop -----------------------------------------------------------
 const clock = new THREE.Clock();
+// A hidden tab draws no frames, and a locked phone stops drawing them too. The
+// audio pump runs on a timer so the music keeps its notes while the page is out
+// of sight, and the audio clock keeps the time. Two seconds of look-ahead
+// covers the one tick a second that a hidden tab allows a timer.
+setInterval(() => player.pump(), 250);
+
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   player.update(dt);

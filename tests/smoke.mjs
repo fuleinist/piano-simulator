@@ -9,6 +9,7 @@ import { keyX, isBlack, noteName, midiFromName, MIDI_MIN, MIDI_MAX, WHITE_COUNT 
 import { PRESETS } from '../src/scene.js';
 import { barLengths, PPS, MIN_LEN } from '../src/bars.js';
 import { collectPedals, pedalSpans, PEDAL_ORDER } from '../src/pedals.js';
+import { NoteSchedule } from '../src/schedule.js';
 import { MAX_GAP, MIN_GAP, barTimes, layoutScore } from '../src/score.js';
 
 const dir = path.resolve('public/midi');
@@ -141,6 +142,56 @@ for (const f of files) {
   }
   if (badPedal) fail(`${f}: ${badPedal} bad pedal spans`);
 
+  // Playback check. The audio schedule walks the piece in music time, and the
+  // audio clock plays what it places. Every note must start once, the events
+  // must come out in time order, and no tone may stop before the end of its own
+  // note. A tone that a pedal holds runs past its note, which is correct.
+  const schedule = new NoteSchedule(assigned, collectPedals(midi.tracks));
+  const fired = [];
+  const sink = {
+    attack: (m, t) => fired.push(['on', m, t]),
+    release: (m, t) => fired.push(['off', m, t]),
+  };
+  schedule.pump(endTime + 1, sink);
+  schedule.drain(endTime + 1, sink);
+
+  let attacks = 0;
+  let early = 0;
+  let struck = 0;
+  let order = 0;
+  let mismatched = 0;
+  let lastTime = -Infinity;
+  const open = new Map();
+  // A re-strike damps the tone before it, so a key that is pressed again cuts
+  // the earlier note short. Any other early stop is a fault.
+  const strikes = new Map();
+  for (const [kind, pitch, time] of fired) {
+    if (kind !== 'on') continue;
+    if (!strikes.has(pitch)) strikes.set(pitch, new Set());
+    strikes.get(pitch).add(time);
+  }
+  for (const [kind, pitch, time] of fired) {
+    if (time < lastTime - 1e-6) order++;
+    lastTime = Math.max(lastTime, time);
+    if (kind === 'on') {
+      const n = assigned[attacks];
+      if (!n || n.midi !== pitch) mismatched++;
+      open.set(pitch, n ? n.time + n.duration : time);
+      attacks++;
+    } else {
+      const end = open.get(pitch);
+      const again = strikes.has(pitch) && strikes.get(pitch).has(time);
+      if (end === undefined) early++;
+      else if (time < end - 1e-6) { if (again) struck++; else early++; }
+      open.delete(pitch);
+    }
+  }
+  if (attacks !== assigned.length) fail(`${f}: ${attacks} note attacks for ${assigned.length} notes`);
+  if (mismatched) fail(`${f}: ${mismatched} attacks do not follow the notes in order`);
+  if (early) fail(`${f}: ${early} tones cut before the end of their note`);
+  if (order) fail(`${f}: ${order} audio events out of time order`);
+  if (open.size) fail(`${f}: ${open.size} tones never released`);
+
   // Sheet-music check. Every note must land on the paper, every bar line must
   // sit inside the piece and after the one before it, and the bar lines must
   // agree with the tempo map that the MIDI reader already applied to the notes.
@@ -203,6 +254,7 @@ for (const f of files) {
   if (badSheet) fail(`${f}: ${badSheet} sheet-layout faults`);
 
   const melody = assigned.filter((n) => n.melody).length;
+  const badAudio = attacks !== assigned.length || mismatched || early || order || open.size;
   console.log(
     `${f.padEnd(26)} notes=${String(notes.length).padStart(5)} ` +
     `L=${String(lh).padStart(4)} R=${String(rh).padStart(4)} ` +
@@ -211,8 +263,9 @@ for (const f of files) {
     `bars=${clipped}clipped/${longestBar.toFixed(1)}u ` +
     `sheet=${layout.glyphs.length}g/${bars.length}b gap=${layout.gap.toFixed(2)} ` +
     `beam=${beams} rest=${rests} dot=${dotted} ` +
+    `audio=${attacks}a/${struck}restrike/${early}early ` +
     `bassOnRight=${bassOnRight}` +
-    (badFinger || badWrist || bigSpan || bassOnRight || badBars || overBar || badPedal || badSheet ? '  [FAIL]' : '  OK')
+    (badFinger || badWrist || bigSpan || bassOnRight || badBars || overBar || badPedal || badSheet || badAudio ? '  [FAIL]' : '  OK')
   );
 }
 
