@@ -10,7 +10,9 @@ import { PRESETS } from '../src/scene.js';
 import { barLengths, PPS, MIN_LEN } from '../src/bars.js';
 import { collectPedals, pedalSpans, PEDAL_ORDER } from '../src/pedals.js';
 import { NoteSchedule } from '../src/schedule.js';
-import { MAX_GAP, MIN_GAP, barTimes, layoutScore } from '../src/score.js';
+import {
+  MARK_INK_STEPS, MAX_GAP, MIN_GAP, barTimes, keyAt, keyMarkSteps, keyScalePcs, keySegments, layoutScore,
+} from '../src/score.js';
 
 const dir = path.resolve('public/midi');
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.mid'));
@@ -203,11 +205,54 @@ for (const f of files) {
     tempos: midi.header.tempos,
     ppq: midi.header.ppq,
     timeSignatures: midi.header.timeSignatures,
+    keySignatures: midi.header.keySignatures,
   });
   let badSheet = 0;
   if (!bars.length || bars[0] !== 0) badSheet++;
   for (let i = 1; i < bars.length; i++) if (!(bars[i] > bars[i - 1])) badSheet++;
   if (!(layout.gap >= MIN_GAP && layout.gap <= MAX_GAP)) badSheet++;
+  // The key check. Every piece must show a signature, and each mark must sit on
+  // the paper. A note that the key covers must carry no accidental, and a note
+  // outside the key must carry one: the marks and the noteheads must agree.
+  const segments = keySegments(midi.header.keySignatures, midi.header.tempos, midi.header.ppq);
+  const shown = layout.keys.map((key) => `${key.guessed ? '?' : ''}${key.accidentals}`);
+  let badKey = 0;
+  if (!layout.keys.length) badKey++;
+  // A file without a key event gets one inferred segment, and a file with one
+  // keeps a segment per signature, plus the opening segment when the first
+  // event starts after the first bar.
+  if (!segments.length && layout.keys.length !== 1) badKey++;
+  if (segments.length && layout.keys.length < segments.length) badKey++;
+  if (segments.length && layout.keys[0].guessed) badKey++;
+  const markSpan = { treble: 0, bass: 0 };
+  for (const key of layout.keys) {
+    if (Math.abs(key.accidentals) > 7 || !Number.isInteger(key.accidentals)) badKey++;
+    for (const staff of ['treble', 'bass']) {
+      const marks = keyMarkSteps(key.accidentals, staff);
+      if (marks.length !== Math.abs(key.accidentals)) badKey++;
+      const top = staff === 'bass' ? layout.staves.bassTopY : layout.staves.trebleTopY;
+      const topStep = staff === 'bass' ? layout.staves.bassTop : layout.staves.trebleTop;
+      for (const mark of marks) {
+        const y = top + (topStep - mark.step) * (layout.gap / 2);
+        const ink = MARK_INK_STEPS * (layout.gap / 2);
+        // The paper must hold the whole mark, not only the step it sits on.
+        if (!(y - ink >= -1e-6 && y + ink <= layout.height + 1e-6)) badKey++;
+      }
+      markSpan[staff] = Math.max(markSpan[staff], marks.length);
+    }
+  }
+  let accidentals = 0;
+  let blackKeys = 0;
+  for (const glyph of layout.glyphs) {
+    const scale = keyScalePcs(keyAt(layout.keys, glyph.time).accidentals);
+    for (const head of glyph.heads) {
+      const pc = ((head.midi % 12) + 12) % 12;
+      if (head.accidental) accidentals++;
+      if ([1, 3, 6, 8, 10].includes(pc)) blackKeys++;
+      if (Boolean(head.accidental) === scale.has(pc)) badKey++;
+    }
+  }
+  if (badKey) fail(`${f}: ${badKey} key-signature faults`);
   let heads = 0;
   let beams = 0;
   let rests = 0;
@@ -262,10 +307,11 @@ for (const f of files) {
     `pedals=${used.join(' ') || 'none'} ` +
     `bars=${clipped}clipped/${longestBar.toFixed(1)}u ` +
     `sheet=${layout.glyphs.length}g/${bars.length}b gap=${layout.gap.toFixed(2)} ` +
+    `key=${shown.join(',')} acc=${accidentals}/${blackKeys} ` +
     `beam=${beams} rest=${rests} dot=${dotted} ` +
     `audio=${attacks}a/${struck}restrike/${early}early ` +
     `bassOnRight=${bassOnRight}` +
-    (badFinger || badWrist || bigSpan || bassOnRight || badBars || overBar || badPedal || badSheet || badAudio ? '  [FAIL]' : '  OK')
+    (badFinger || badWrist || bigSpan || bassOnRight || badBars || overBar || badPedal || badSheet || badKey || badAudio ? '  [FAIL]' : '  OK')
   );
 }
 

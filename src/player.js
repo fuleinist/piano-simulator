@@ -106,6 +106,7 @@ export class Player {
       ppq: midi.header.ppq || 480,
       tempos: midi.header.tempos || [],
       timeSignatures: midi.header.timeSignatures || [],
+      keySignatures: midi.header.keySignatures || [],
     };
     this.title = title;
     this.schedule = new NoteSchedule(assigned, events);
