@@ -108,6 +108,9 @@ The Internet Archive allows a browser to call its search API, but not its file d
 ### Sampled audio
 A Tone.js sampler plays the Salamander grand piano set. The set holds 30 samples across the range. A freeverb adds room tone. The browser needs one click before it can start audio.
 
+### Playback that survives a hidden tab
+The piece keeps its own time. The player reads the time from the audio clock, which the browser runs for the sound it plays. A frame that arrives late, or not at all, therefore cannot slow the piece. The notes are placed on that clock two seconds ahead, so the rhythm holds while the page draws no frames. A background tab, a minimised window, or a locked phone continues to play. Only the transport controls stop or slow the piece.
+
 ### Camera and tempo
 The default view looks straight down at the keyboard at 90°, so key widths and hand spans read at their true size. The stage sits a little below the centre of the window, and the sheet band takes the space above it. Five presets are available: top, perform, front, side, and close. The front, side, and close views slide along the keys with the player, so the hands stay in frame.
 
@@ -312,4 +315,5 @@ npm run fixtures
 - The Internet Archive metadata is user-contributed. A result may be a poor rendition of the piece its title names.
 - The local library depends on browser storage. A private window, or a browser under storage pressure, may remove it.
 - Recording uses the browser MediaRecorder API. Output is WebM. Some browsers may record video only if the audio tap is unavailable.
+- A phone that locks its screen keeps the audio only while the browser keeps its audio context. Safari may suspend that context anyway. The page declares playback audio through `navigator.audioSession` where the browser supports it, and the result on a locked iPhone needs a device check.
 - The recording fit changes the zoom only. It keeps the camera's target and angle, so a passage far from the target pulls the whole keyboard small rather than sliding the view over to it. A following preset (front, side, or close) already slides along the keys, and the fit then needs less of a pull-back.
