@@ -6,7 +6,8 @@
 // captures the canvas only, so the view hides the paper while a capture runs.
 
 import {
-  BASS, BEAM_SPACE, BEAM_THICK, HEAD_RX, HEAD_RY, OPEN_RX, TREBLE, layoutScore, signatureAt,
+  BASS, BEAM_SPACE, BEAM_THICK, HEAD_RX, HEAD_RY, OPEN_RX, TREBLE, keyAt, keyMarkSteps,
+  layoutScore, signatureAt,
 } from './score.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -21,6 +22,9 @@ const CLEF_FONT = '"Bravura", "Segoe UI Symbol", "Noto Music", serif';
 const ACC_FONT = '"Segoe UI Symbol", serif';
 const FLAG_LEN = 1.5; // flag length, in line gaps
 const SIG_FONT = '"Segoe UI Symbol", "Noto Music", serif';
+// A sign from the layout reads as its music glyph: a sharp, a flat, a natural.
+const ACC_GLYPH = { '#': '\u266F', b: '\u266D', n: '\u266E' };
+const signGlyph = (sign) => ACC_GLYPH[sign] || sign;
 
 /** The flag that hangs from the stem of an eighth or a sixteenth note. */
 function flagPath(stem, gap, index) {
@@ -167,6 +171,8 @@ export class ScoreView {
     this.marks = new Map();
     this.sigNodes = null;
     this.sigKey = null;
+    this.keyNodes = null;
+    this.keyKey = null;
   }
 
   _build() {
@@ -181,6 +187,7 @@ export class ScoreView {
       tempos: this.meta.tempos || [],
       ppq: this.meta.ppq || 480,
       timeSignatures: this.meta.timeSignatures || [],
+      keySignatures: this.meta.keySignatures || [],
     });
     this.layout = layout;
     this._clear();
@@ -219,12 +226,18 @@ export class ScoreView {
     if (this.visible && !this.recording) this.update(this.time);
   }
 
-  /** The clefs, the time signature, the bracket, and the paper that fades the notes. */
+  /** The clefs, the key signature, the time signature, the bracket, and the paper that fades the notes. */
   _drawGutter() {
     const layout = this.layout;
     const { gap, height } = layout;
-    // Room for a clef and a time signature, so neither covers a scrolling note.
-    const width = Math.min(96, Math.max(46, gap * 8));
+    // Room for a clef, the key signature and a time signature, so none of them
+    // covers a scrolling note. The widest signature of the piece sets the room.
+    const signs = Math.max(0, ...layout.keys.map((key) => Math.abs(key.accidentals)));
+    this.keyGap = gap * 1.05;
+    this.clefX = gap * 2.5;
+    this.keyX = gap * 5.2;
+    this.sigX = this.keyX + signs * this.keyGap + gap * 0.9;
+    const width = Math.min(180, Math.max(70, this.sigX + gap * 1.6));
     this.gutterWidth = width;
 
     this.gutter = SVG('g', { class: 'sc-gutter' });
@@ -233,14 +246,12 @@ export class ScoreView {
     );
 
     const staves = layout.staves;
-    const yOf = (step, staff) => (staff === BASS ? staves.bassTopY : staves.trebleTopY)
-      + ((staff === BASS ? staves.bassTop : staves.trebleTop) - step) * (gap / 2);
     const size = gap * 5;
     for (const staff of [TREBLE, BASS]) {
       // The ink of a clef is centred on the middle line of its own staff.
-      const middle = yOf(staff === BASS ? staves.bassTop - 4 : staves.trebleTop - 4, staff);
+      const middle = this._yOf(staff === BASS ? staves.bassTop - 4 : staves.trebleTop - 4, staff);
       const clef = SVG('text', {
-        class: 'sc-clef', x: width * 0.34,
+        class: 'sc-clef', x: this.clefX,
         y: centredBaseline(CLEF[staff], size, CLEF_FONT, middle, this.svg),
         'font-size': size, 'text-anchor': 'middle',
       });
@@ -248,17 +259,28 @@ export class ScoreView {
       this.gutter.appendChild(clef);
     }
 
-    // The time signature sits right of the clefs, on both staves, and it follows
-    // the playhead when the piece changes signature. Each digit fills two of the
-    // spaces next to the middle line, as a printed score sets them.
+    // The key signature sits right of the clefs, and it follows the playhead the
+    // way the time signature does. Each staff keeps an empty group to fill.
+    this.keyNodes = [];
+    for (const staff of [TREBLE, BASS]) {
+      const group = SVG('g', { class: 'sc-key', 'data-staff': staff });
+      this.gutter.appendChild(group);
+      this.keyNodes.push({ staff, group });
+    }
+    this.keyKey = null;
+    this._showKey(null);
+
+    // The time signature sits right of the key signature, on both staves, and it
+    // follows the playhead when the piece changes signature. Each digit fills
+    // two of the spaces next to the middle line, as a printed score sets them.
     const sigSize = gap * 2.3;
     this.sigNodes = [];
     for (const staff of [TREBLE, BASS]) {
-      const middle = yOf(staff === BASS ? staves.bassTop - 4 : staves.trebleTop - 4, staff);
+      const middle = this._yOf(staff === BASS ? staves.bassTop - 4 : staves.trebleTop - 4, staff);
       const pair = {};
       for (const [key, target] of [['top', middle - gap], ['bottom', middle + gap]]) {
         const node = SVG('text', {
-          class: 'sc-sig', x: width * 0.78, 'text-anchor': 'middle',
+          class: 'sc-sig', x: this.sigX, 'text-anchor': 'middle',
           'font-size': sigSize, y: target,
         });
         this.gutter.appendChild(node);
@@ -276,6 +298,39 @@ export class ScoreView {
       d: `M ${width - 5} ${top} h -4 v ${bottom - top} h 4`,
     }));
     this.svg.appendChild(this.gutter);
+  }
+
+  /** The y of a step on a staff, in paper coordinates. */
+  _yOf(step, staff) {
+    const { gap, staves } = this.layout;
+    return (staff === BASS ? staves.bassTopY : staves.trebleTopY)
+      + ((staff === BASS ? staves.bassTop : staves.trebleTop) - step) * (gap / 2);
+  }
+
+  /** Write the marks of the key in force at a time into the gutter. */
+  _showKey(time) {
+    const keys = this.layout ? this.layout.keys : [];
+    if (!keys.length || !this.keyNodes) return;
+    const key = time === null ? keys[0] : keyAt(keys, time);
+    if (!key || this.keyKey === key.accidentals) return;
+    this.keyKey = key.accidentals;
+    // A mark reads a little larger than an accidental beside a notehead, as the
+    // engraver sets it.
+    const size = this.layout.gap * 1.9;
+    for (const { staff, group } of this.keyNodes) {
+      group.replaceChildren(...keyMarkSteps(key.accidentals, staff).map((mark, index) => {
+        const sign = signGlyph(mark.sign);
+        const node = SVG('text', {
+          class: 'sc-key-mark',
+          x: this.keyX + index * this.keyGap,
+          'text-anchor': 'middle',
+          'font-size': size,
+          y: centredBaseline(sign, size, ACC_FONT, this._yOf(mark.step, staff), this.svg),
+        });
+        node.textContent = sign;
+        return node;
+      }));
+    }
   }
 
   /** Write the time signature of the current time into the gutter. */
@@ -371,12 +426,13 @@ export class ScoreView {
           const size = gap * 1.7;
           // The accidental reads from the same line as its notehead, and it
           // keeps clear of the head so the two marks do not touch.
+          const sign = signGlyph(head.accidental);
           const accidental = SVG('text', {
             class: 'sc-acc', x: -(rx + 0.9 * gap), 'text-anchor': 'middle',
-            y: centredBaseline(head.accidental, size, ACC_FONT, head.y, this.svg),
+            y: centredBaseline(sign, size, ACC_FONT, head.y, this.svg),
             'font-size': size,
           });
-          accidental.textContent = head.accidental;
+          accidental.textContent = sign;
           node.appendChild(accidental);
         }
         const ellipse = SVG('ellipse', {
@@ -427,6 +483,7 @@ export class ScoreView {
     const playheadX = layout.playheadRatio * layout.width;
     this.world.setAttribute('transform', `translate(${playheadX - time * pxPerSecond} 0)`);
     this._showSignature(time);
+    this._showKey(time);
 
     const first = Math.floor((time - playheadX / pxPerSecond) / chunkSeconds);
     const last = Math.floor((time + (layout.width - playheadX) / pxPerSecond) / chunkSeconds);

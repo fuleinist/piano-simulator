@@ -54,6 +54,7 @@ body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; co
 .sc-ledger { stroke: var(--ink); stroke-width: 1; }
 .sc-bracket { fill: none; stroke: var(--ink); stroke-width: 1.6; }
 .sc-clef { fill: var(--ink); font-family: "Bravura", "Segoe UI Symbol", "Noto Music", serif; }
+.sc-key { fill: var(--ink); font-family: "Segoe UI Symbol", "Noto Music", serif; }
 .sc-acc { fill: var(--ink); font-family: "Segoe UI Symbol", serif; }
 .sc-head { fill: var(--ink); }
 .sc-head.open { fill: none; stroke: var(--ink); }

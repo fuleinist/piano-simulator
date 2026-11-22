@@ -3,7 +3,8 @@
 //
 // The sheet is a grand staff on one pitch grid. The right hand takes the upper
 // staff and the left hand takes the lower staff, which follows the hand split.
-// A note outside its staff draws ledger lines.
+// A note outside its staff draws ledger lines. The key signature sets the marks
+// in the gutter, and it spells every notehead.
 //
 // Coordinates: x grows to the right and equals the note time times the scroll
 // speed. y grows downward from the top of the paper. One staff line gap is the
@@ -53,23 +54,143 @@ const FLAGS_OF = new Map([[16, 0], [8, 0], [4, 0], [2, 1], [1, 2]]);
 const REST_OF_BEAT = new Map([[4, 'quarter'], [8, 'eighth'], [2, 'half'], [16, 'sixteenth']]);
 
 const LETTERS = 'CDEFGAB';
-const LETTER_OF_PC = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
-const SHARP_PCS = new Set([1, 3, 6, 8, 10]);
+// The pitch class of each letter with no accidental: C D E F G A B.
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+// The order in which the marks of a key signature appear, as letter indexes.
+const SHARP_ORDER = [3, 0, 4, 1, 5, 2, 6]; // F C G D A E B
+const FLAT_ORDER = [6, 2, 5, 1, 4, 0, 3]; // B E A D G C F
+// The key name of each mark count, from seven flats to seven sharps. A MIDI
+// key-signature event names the key this way, and the position of the name
+// gives the mark count back.
+const KEY_NAMES = ['Cb', 'Gb', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'C', 'G', 'D', 'A', 'E', 'B', 'F#', 'C#'];
+// The step that each mark of a key signature sits on, in the order the marks
+// appear. A treble signature runs from F5 down the staff, a bass one from F3.
+const SHARP_STEPS = {
+  [TREBLE]: [38, 35, 39, 36, 33, 37, 34],
+  [BASS]: [24, 21, 25, 22, 19, 23, 20],
+};
+const FLAT_STEPS = {
+  [TREBLE]: [34, 37, 33, 36, 32, 35, 30],
+  [BASS]: [20, 23, 19, 22, 18, 21, 17],
+};
+// Each printed mark must buy this much more of the piece inside the key, or a
+// signature with no marks is the better answer.
+const MARK_COST = 0.005;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-/** Diatonic position of a MIDI note. A sharp note keeps the letter below it. */
-export function pitchOf(midi) {
+/**
+ * The alteration that each letter carries in a key with `accidentals` marks.
+ * A sharp signature raises the letters F C G D A E B in that order, and a flat
+ * signature lowers B E A D G C F. One element per letter index.
+ */
+function keyAlters(accidentals) {
+  const count = clamp(Math.round(accidentals || 0), -7, 7);
+  const alters = new Array(7).fill(0);
+  const order = count > 0 ? SHARP_ORDER : FLAT_ORDER;
+  for (let i = 0; i < Math.abs(count); i++) alters[order[i]] = Math.sign(count);
+  return alters;
+}
+
+/** The mark count of a MIDI key-signature event. A positive count is sharps. */
+export function keyAccidentalsOf(event) {
+  if (typeof event === 'number') return clamp(Math.round(event), -7, 7);
+  const index = event && typeof event.key === 'string' ? KEY_NAMES.indexOf(event.key) : -1;
+  return index < 0 ? 0 : index - 7;
+}
+
+/** The pitch classes that a key signature covers. */
+export function keyScalePcs(accidentals) {
+  const alters = keyAlters(accidentals);
+  return new Set(LETTER_PC.map((pc, letter) => (((pc + alters[letter]) % 12) + 12) % 12));
+}
+
+/**
+ * Diatonic position of a MIDI note, spelled for a key.
+ *
+ * A note that the key signature covers carries no accidental. A note that
+ * cancels a mark of the key carries a natural sign. A note outside the key
+ * takes the letter that needs the plainest mark, and the key's own direction
+ * decides between two spellings that cost the same.
+ */
+export function pitchOf(midi, accidentals = 0) {
   const pc = ((midi % 12) + 12) % 12;
-  const letter = LETTER_OF_PC[pc];
-  const octave = Math.floor(midi / 12) - 1;
+  const alters = keyAlters(accidentals);
+  const wanted = (accidentals || 0) < 0 ? -1 : 1;
+  let best = null;
+  for (let letter = 0; letter < 7; letter++) {
+    let alter = (((pc - LETTER_PC[letter]) % 12) + 12) % 12;
+    if (alter > 6) alter -= 12;
+    if (Math.abs(alter) > 2) continue;
+    const mark = alters[letter];
+    const accidental = alter === mark
+      ? ''
+      : alter === 0
+        ? 'n'
+        : (alter > 0 ? '#' : 'b').repeat(Math.abs(alter));
+    // No mark reads best, then a natural sign, then one mark, then two.
+    const cost = accidental === '' ? 0 : accidental === 'n' ? 1 : Math.abs(alter) + 1;
+    // Two letters can cost the same mark, and only the key can choose.
+    const rank = cost * 2 + (Math.sign(alter) === wanted ? 0 : 1);
+    if (!best || rank < best.rank) best = { letter, alter, accidental, rank };
+  }
+  // The octave follows the letter, not the sounding pitch: C flat 4 is a B3,
+  // and it sits on the middle C line.
+  const octave = Math.floor((midi - best.alter) / 12) - 1;
   return {
-    letter: LETTERS[letter],
-    accidental: SHARP_PCS.has(pc) ? '#' : '',
+    letter: LETTERS[best.letter],
+    accidental: best.accidental,
+    alter: best.alter,
     octave,
-    step: octave * 7 + letter,
+    step: octave * 7 + best.letter,
     pc,
   };
+}
+
+/**
+ * The marks of a key signature on one staff, in the order they appear. Each
+ * mark names the step it sits on and the sign it prints.
+ */
+export function keyMarkSteps(accidentals, staff = TREBLE) {
+  const count = clamp(Math.round(accidentals || 0), -7, 7);
+  const steps = (count > 0 ? SHARP_STEPS : FLAT_STEPS)[staff] || SHARP_STEPS[TREBLE];
+  const sign = count > 0 ? '#' : 'b';
+  return steps.slice(0, Math.abs(count)).map((step) => ({ step, sign }));
+}
+
+/**
+ * The key signature that needs the fewest marks for the notes of a piece.
+ *
+ * A MIDI file need not carry a key-signature event. The sheet then prints the
+ * marks that cover most of the sounding time, and pays for each mark, so a
+ * piece in C major keeps an empty signature instead of a needless one.
+ */
+export function guessAccidentals(notes = []) {
+  const weight = new Array(12).fill(0);
+  let total = 0;
+  for (const note of notes) {
+    if (!Number.isFinite(note.midi)) continue;
+    const held = Math.max(Number(note.duration) || 0, 0.02);
+    weight[((note.midi % 12) + 12) % 12] += held;
+    total += held;
+  }
+  if (!(total > 0)) return 0;
+  // Fewest marks first, so the smallest signature wins a tie.
+  const order = [0];
+  for (let count = 1; count <= 7; count++) order.push(count, -count);
+  let best = 0;
+  let bestCost = Infinity;
+  for (const accidentals of order) {
+    const scale = keyScalePcs(accidentals);
+    let inside = 0;
+    for (let pc = 0; pc < 12; pc++) if (scale.has(pc)) inside += weight[pc];
+    const cost = (total - inside) / total + Math.abs(accidentals) * MARK_COST;
+    if (cost < bestCost - 1e-9) {
+      bestCost = cost;
+      best = accidentals;
+    }
+  }
+  return best;
 }
 
 /** Which staff a note belongs to. The hand decides; the register is a fallback. */
@@ -174,6 +295,29 @@ export function signatureSegments(timeSignatures = [], tempos = [], ppq = 480) {
   return segments;
 }
 
+/**
+ * The key signatures in force over the piece, each with the time it starts.
+ * A file with no key-signature event gives an empty list.
+ */
+export function keySegments(keySignatures = [], tempos = [], ppq = 480) {
+  const events = [...(keySignatures || [])].sort((a, b) => (a.ticks || 0) - (b.ticks || 0));
+  const segments = [];
+  for (const event of events) {
+    const accidentals = keyAccidentalsOf(event);
+    const time = ticksToSeconds(event.ticks || 0, tempos, ppq);
+    const last = segments[segments.length - 1];
+    // Two events at one instant describe one key: the later event wins.
+    if (last && Math.abs(time - last.time) < 1e-3) last.accidentals = accidentals;
+    else if (last && last.accidentals === accidentals) continue;
+    else segments.push({ time, accidentals, guessed: false });
+  }
+  // The first event holds from the start, as the MIDI standard says.
+  if (segments.length && segments[0].time > 1e-3) {
+    segments.unshift({ time: 0, accidentals: segments[0].accidentals, guessed: false });
+  }
+  return segments;
+}
+
 /** The time signature in force at a time, in seconds. */
 export function signatureAt(segments, time) {
   let found = segments[0];
@@ -182,6 +326,9 @@ export function signatureAt(segments, time) {
   }
   return found;
 }
+
+/** The key signature in force at a time, in seconds. */
+export const keyAt = signatureAt;
 
 /**
  * Where the bar lines fall, in seconds. A file with no time signature gets
@@ -242,22 +389,40 @@ export function scrollSpeed(notes, { width = 1200, gap = MAX_GAP } = {}) {
  */
 export function layoutScore(notes, {
   bars = [], width = 1200, maxHeight = 190, tempos = [], ppq = 480, timeSignatures = [],
+  keySignatures = [],
 } = {}) {
   const sorted = notes
     .filter((n) => Number.isFinite(n.time) && Number.isFinite(n.midi))
     .slice()
     .sort((a, b) => a.time - b.time || a.midi - b.midi);
 
+  // The key signature decides how a note is spelled, so it comes before any
+  // pitch is placed on the staff. A file without a key-signature event takes
+  // the signature that needs the fewest marks for its own notes.
+  const signatures = signatureSegments(timeSignatures, tempos, ppq);
+  let keys = keySegments(keySignatures, tempos, ppq);
+  if (!keys.length) keys = [{ time: 0, accidentals: guessAccidentals(sorted), guessed: true }];
+  const accidentalsAt = (time) => keyAt(keys, time).accidentals;
+
   let minStep = BASS_TOP_STEP - STAFF_STEPS; // G2, the bottom line of the lower staff
   let maxStep = TREBLE_TOP_STEP; // F5, the top line of the upper staff
   let midiMin = null;
   let midiMax = null;
   for (const note of sorted) {
-    const { step } = pitchOf(note.midi);
+    const { step } = pitchOf(note.midi, accidentalsAt(note.time));
     if (step < minStep) minStep = step;
     if (step > maxStep) maxStep = step;
     if (midiMin === null || note.midi < midiMin) midiMin = note.midi;
     if (midiMax === null || note.midi > midiMax) midiMax = note.midi;
+  }
+  // A sign outside the staff still needs its room on the paper.
+  for (const segment of keys) {
+    for (const staff of [TREBLE, BASS]) {
+      for (const mark of keyMarkSteps(segment.accidentals, staff)) {
+        if (mark.step < minStep) minStep = mark.step;
+        if (mark.step > maxStep) maxStep = mark.step;
+      }
+    }
   }
 
   const topRef = Math.max(TREBLE_TOP_STEP, maxStep);
@@ -291,7 +456,7 @@ export function layoutScore(notes, {
       const chord = window.filter((n) => staffOf(n) === staff);
       if (chord.length) {
         glyphs.push(glyphOf(chord, staff, {
-          gap, yOfStep, pxPerSecond, tempos, ppq, height,
+          gap, yOfStep, pxPerSecond, tempos, ppq, height, accidentalsAt,
         }));
       }
     }
@@ -317,7 +482,6 @@ export function layoutScore(notes, {
     }
   }
   const barSeconds = bars.filter((t) => Number.isFinite(t) && t >= 0 && t <= duration);
-  const signatures = signatureSegments(timeSignatures, tempos, ppq);
   const beams = applyBeams(glyphs, {
     gap, tempos, ppq, height, sigAt: (time) => signatureAt(signatures, time),
   });
@@ -354,6 +518,7 @@ export function layoutScore(notes, {
     rests,
     marks,
     signatures,
+    keys,
     bars: barSeconds,
     duration,
   };
@@ -361,10 +526,11 @@ export function layoutScore(notes, {
 
 function glyphOf(chord, staff, {
   gap, yOfStep, pxPerSecond, tempos = [], ppq = 480, height = Infinity,
+  accidentalsAt = () => 0,
 }) {
   const first = chord[0];
   const heads = chord.map((note) => {
-    const { step, accidental } = pitchOf(note.midi);
+    const { step, accidental } = pitchOf(note.midi, accidentalsAt(note.time));
     return {
       midi: note.midi,
       step,

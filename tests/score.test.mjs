@@ -9,7 +9,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  BASS, BEAM_SLOPE, MAX_GAP, MIN_GAP, MIN_STEM, PAD, TREBLE, barTimes, layoutScore, ledgerStepsOf,
+  BASS, BEAM_SLOPE, MAX_GAP, MIN_GAP, MIN_STEM, PAD, TREBLE, barTimes, guessAccidentals,
+  keyAccidentalsOf, keyAt, keyMarkSteps, keySegments, layoutScore, ledgerStepsOf,
   noteValueOf, pitchOf, signatureAt, staffOf, ticksToSeconds,
 } from '../src/score.js';
 
@@ -27,16 +28,21 @@ const note = (midi, time, duration = 0.5, hand = 'R') => ({ midi, time, duration
 const TEMPOS = [{ ticks: 0, bpm: 120 }];
 const PPQ = 480;
 const SIGNATURES = [{ ticks: 0, timeSignature: [4, 4] }];
+// Sheet tests pin the key so a spelling cannot depend on the inference path.
+const KEYS = [{ ticks: 0, key: 'C', scale: 'major' }];
 const barsOf = (duration, timeSignatures = SIGNATURES) => barTimes(
   { ppq: PPQ, tempos: TEMPOS, timeSignatures },
   { duration },
 );
-const sheetOf = (notes, { duration = 4, timeSignatures = SIGNATURES } = {}) => layoutScore(notes, {
+const sheetOf = (notes, {
+  duration = 4, timeSignatures = SIGNATURES, keySignatures = KEYS,
+} = {}) => layoutScore(notes, {
   bars: barsOf(duration, timeSignatures),
   width: 1200,
   tempos: TEMPOS,
   ppq: PPQ,
   timeSignatures,
+  keySignatures,
 });
 
 const attr = (tag, name) => {
@@ -47,7 +53,7 @@ const attr = (tag, name) => {
 test('a pitch maps to its line on the staff, and a sharp keeps its letter', () => {
   assert.deepEqual(
     { ...pitchOf(60) },
-    { letter: 'C', accidental: '', octave: 4, step: 28, pc: 0 },
+    { letter: 'C', accidental: '', alter: 0, octave: 4, step: 28, pc: 0 },
     'C4 must sit on the middle C step',
   );
   assert.equal(pitchOf(61).letter, 'C', 'C sharp must keep the letter C');
@@ -132,7 +138,7 @@ test('a high chord takes a downward stem and its own ledger lines', () => {
 });
 
 test('a sharp note carries an accidental', () => {
-  const layout = layoutScore([note(61, 1), note(63, 1), note(65, 1)], { width: 1200 });
+  const layout = sheetOf([note(61, 1), note(63, 1), note(65, 1)]);
   const [chord] = layout.glyphs;
   assert.deepEqual(chord.heads.map((h) => h.accidental), ['#', '#', ''], 'only the black keys take a sharp');
 });
@@ -453,6 +459,112 @@ test('the time signature comes from the file, and the gutter reads it', () => {
   assert.ok(css.includes('.sc-sig {'), 'no .sc-sig rule in styles.css');
 });
 
+test('a key signature names its marks, and every mark sits on the staff', () => {
+  assert.equal(keyAccidentalsOf({ key: 'Ab', scale: 'major' }), -4, 'four flats');
+  assert.equal(keyAccidentalsOf({ key: 'B', scale: 'minor' }), 5, 'B minor carries the marks of D major');
+  assert.equal(keyAccidentalsOf({ key: 'Cb', scale: 'major' }), -7);
+  assert.equal(keyAccidentalsOf({ key: 'C#', scale: 'major' }), 7);
+  assert.equal(keyAccidentalsOf({ key: 'C', scale: 'major' }), 0);
+  assert.equal(keyAccidentalsOf({ key: 'H' }), 0, 'an unknown key name prints no mark');
+  assert.equal(keyAccidentalsOf(null), 0);
+
+  // The marks run F C G D A E B on the upper staff, and each sign keeps its
+  // own letter.
+  const sharps = keyMarkSteps(5, TREBLE);
+  assert.equal(sharps.length, 5, 'five sharps take five marks');
+  assert.deepEqual(sharps.map((m) => m.sign), ['#', '#', '#', '#', '#']);
+  assert.deepEqual(sharps.map((m) => 'CDEFGAB'[m.step % 7]), ['F', 'C', 'G', 'D', 'A']);
+  assert.equal(sharps[0].step, 38, 'the first treble sharp sits on the top line, F5');
+
+  // The marks run B E A D G C F on the lower staff.
+  const flats = keyMarkSteps(-4, BASS);
+  assert.equal(flats.length, 4);
+  assert.deepEqual(flats.map((m) => m.sign), ['b', 'b', 'b', 'b']);
+  assert.deepEqual(flats.map((m) => 'CDEFGAB'[m.step % 7]), ['B', 'E', 'A', 'D']);
+
+  assert.equal(keyMarkSteps(0, TREBLE).length, 0, 'C major prints no mark');
+  assert.equal(keyMarkSteps(4, TREBLE).length, 4);
+});
+
+test('a note takes its spelling from the key', () => {
+  // Four flats: B flat, E flat, A flat and D flat carry no sign of their own.
+  assert.equal(pitchOf(70, -4).letter, 'B', 'B flat keeps the B space');
+  assert.equal(pitchOf(70, -4).accidental, '');
+  assert.equal(pitchOf(63, -4).accidental, '');
+  assert.equal(pitchOf(61, -4).letter, 'D', 'D flat keeps the D line');
+  assert.equal(pitchOf(62, -4).accidental, 'n', 'D natural cancels the mark of the key');
+  // A note outside the key takes the plainest sign, in the direction of the key.
+  assert.equal(pitchOf(66, -4).accidental, 'b', 'a flat key spells G flat, not F sharp');
+  assert.equal(pitchOf(66, -4).letter, 'G');
+  // The same pitch reads as a sharp in C major, and as a key note in five sharps.
+  assert.equal(pitchOf(70, 0).letter, 'A');
+  assert.equal(pitchOf(70, 0).accidental, '#');
+  assert.equal(pitchOf(70, 5).accidental, '');
+  // A flat lowers the letter, so C flat 4 prints on the middle C line.
+  const cFlat = pitchOf(59, -7);
+  assert.equal(cFlat.letter, 'C');
+  assert.equal(cFlat.accidental, '');
+  assert.equal(cFlat.octave, 4);
+  assert.equal(cFlat.step, 28);
+});
+
+test('the paper prints the file key and drops the signs that key covers', () => {
+  const notes = [note(70, 0), note(70, 1), note(62, 2), note(66, 3)];
+  const keyed = sheetOf(notes, { keySignatures: [{ ticks: 0, key: 'Ab', scale: 'major' }] });
+  assert.equal(keyed.keys.length, 1);
+  assert.equal(keyed.keys[0].accidentals, -4);
+  assert.equal(keyed.keys[0].guessed, false, 'the file named its key');
+  const signs = keyed.glyphs.flatMap((g) => g.heads.map((h) => h.accidental));
+  assert.deepEqual(
+    signs,
+    ['', '', 'n', 'b'],
+    'the key covers B flat, D natural cancels its flat, and G flat sits outside the key',
+  );
+
+  // The same notes in C major print a sharp on every black key.
+  const plain = sheetOf(notes);
+  assert.equal(plain.glyphs.flatMap((g) => g.heads.map((h) => h.accidental)).filter(Boolean).length, 3);
+});
+
+test('a key change lands at the time the file gives it', () => {
+  const keys = keySegments([
+    { ticks: 0, key: 'Ab', scale: 'major' },
+    { ticks: 480, key: 'E', scale: 'major' },
+    { ticks: 960, key: 'Ab', scale: 'major' },
+  ], TEMPOS, PPQ);
+  assert.equal(keys.length, 3, 'three signatures over the piece');
+  assert.equal(keyAt(keys, 0).accidentals, -4);
+  assert.equal(keyAt(keys, 0.6).accidentals, 4, 'the middle section takes four sharps');
+  assert.equal(keyAt(keys, 2.5).accidentals, -4, 'the last segment holds to the end');
+  // A repeated signature adds no segment, and a file with no event adds none.
+  assert.equal(keySegments([{ ticks: 0, key: 'C' }, { ticks: 480, key: 'C' }], TEMPOS, PPQ).length, 1);
+  assert.deepEqual(keySegments([], TEMPOS, PPQ), []);
+  assert.equal(keySegments(null, TEMPOS, PPQ).length, 0);
+});
+
+test('a file with no key event takes the signature that needs the fewest marks', () => {
+  const scale = [0, 2, 4, 5, 7, 9, 11].map((pc, i) => note(60 + pc, i * 0.5));
+  assert.equal(guessAccidentals(scale), 0, 'a C major scale keeps an empty signature');
+  const gMajor = [7, 9, 11, 0, 2, 4, 6].map((pc, i) => note(60 + pc, i * 0.5));
+  assert.equal(guessAccidentals(gMajor), 1, 'a G major scale takes one sharp');
+  const dMinor = [2, 4, 5, 7, 9, 10, 0].map((pc, i) => note(60 + pc, i * 0.5));
+  assert.equal(guessAccidentals(dMinor), -1, 'D natural minor shares the signature of F major');
+  assert.equal(guessAccidentals([]), 0, 'no notes take no mark');
+
+  const sheet = layoutScore(scale, { width: 1200, tempos: TEMPOS, ppq: PPQ });
+  assert.equal(sheet.keys[0].guessed, true, 'the sheet marks a signature that it had to infer');
+});
+
+test('the view draws the key signature and follows a key change', () => {
+  assert.match(view, /_showKey\(/, 'the view never shows the key signature');
+  assert.match(view, /keyMarkSteps\(/, 'the view never places the marks');
+  assert.match(view, /keyAt\(/, 'the view does not follow a key change');
+  assert.match(view, /signGlyph\(/, 'the view never prints the music glyph of a sign');
+  assert.ok(css.includes('.sc-key {'), 'no .sc-key rule in styles.css');
+  assert.match(player, /keySignatures: midi\.header\.keySignatures/, 'the player never publishes the key signature');
+  assert.match(main, /meta: p\.scoreMeta/, 'the view never receives the key signature');
+});
+
 test('every mark the paper draws stays on the paper', () => {
   const sheet = sheetOf([
     note(21, 0, 1), note(108, 0, 1), note(60, 1, 1, 'L'), note(72, 2, 0.5),
@@ -486,10 +598,25 @@ test('every mark the paper draws stays on the paper', () => {
       assert.ok(beam.y2 >= 0 && beam.y2 <= sheetToCheck.height, 'a beam left the paper');
     }
   }
+
+  // The widest signature still finds room for every mark on both staves.
+  for (const key of ['C#', 'Cb']) {
+    const wide = sheetOf([note(60, 0, 1), note(72, 1, 1)], {
+      keySignatures: [{ ticks: 0, key, scale: 'major' }],
+    });
+    assert.equal(Math.abs(wide.keys[0].accidentals), 7, `${key} must print seven marks`);
+    for (const staff of [TREBLE, BASS]) {
+      for (const mark of keyMarkSteps(wide.keys[0].accidentals, staff)) {
+        const y = (staff === BASS ? wide.staves.bassTopY : wide.staves.trebleTopY)
+          + ((staff === BASS ? wide.staves.bassTop : wide.staves.trebleTop) - mark.step) * (wide.gap / 2);
+        assert.ok(y >= 0 && y <= wide.height, `a ${key} mark left the paper`);
+      }
+    }
+  }
 });
 
 test('the view draws every symbol the layout describes', () => {
-  for (const name of ['.sc-head.open', '.sc-flag', '.sc-beam', '.sc-dot', '.sc-rest', '.sc-rest-fill', '.sc-sig']) {
+  for (const name of ['.sc-head.open', '.sc-flag', '.sc-beam', '.sc-dot', '.sc-rest', '.sc-rest-fill', '.sc-sig', '.sc-key']) {
     assert.ok(css.includes(`${name} {`), `no ${name} rule in styles.css`);
   }
   assert.match(view, /flagPath\(/, 'the view never draws a flag');
